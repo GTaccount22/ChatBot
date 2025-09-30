@@ -1,6 +1,10 @@
 import express from "express";
 import bodyParser from "body-parser";
 import axios from "axios";
+import dotenv from "dotenv";
+
+// Cargar variables de entorno
+dotenv.config();
 
 const app = express();
 app.use(bodyParser.json());
@@ -8,10 +12,20 @@ app.use(bodyParser.json());
 // 🗂️ Estado de usuarios (en producción usar base de datos)
 const userStates = new Map();
 
-// 🔑 Variables de Meta (usa .env en producción)
-const ACCESS_TOKEN = "EAA5JMpk0TAMBPpPmKC1L6cg94P6aMkopaSjNEwyuMDu4R510N2jbpf1wEUrsTZCHD2SijmjdSkvJqBPgLDbMmrZBEhsuzfswg5TcIshg3M60ui06GJCMLdA5LJuXRnXOzZB8x2IyMcddDOMu282jIZB68zxfTXvlTeZBR6wjevhZCZC6jw5qcEXsxpoLPHRGv1oMwZDZD"; 
-const PHONE_NUMBER_ID = "839140125945010";
-const VERIFY_TOKEN = "12345"; // mismo que configuraste en Meta
+// 🔑 Variables de Meta desde .env
+const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+
+// Validar que las variables estén configuradas
+if (!ACCESS_TOKEN || !PHONE_NUMBER_ID || !VERIFY_TOKEN) {
+  console.error("❌ Error: Faltan variables de entorno requeridas");
+  console.error("Asegúrate de tener un archivo .env con:");
+  console.error("- ACCESS_TOKEN");
+  console.error("- PHONE_NUMBER_ID");
+  console.error("- VERIFY_TOKEN");
+  process.exit(1);
+}
 
 const API_URL = `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`;
 
