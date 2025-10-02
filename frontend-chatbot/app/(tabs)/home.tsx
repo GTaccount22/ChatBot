@@ -12,9 +12,16 @@ import {
 } from "react-native";
 import { AuthService } from "../../lib/authService";
 
+type Usuario = {
+  nombre: string;
+  apellido: string;
+  genero: "M" | "F"; // o string si puede haber otros valores
+};
+
+
 export default function HomeScreen() {
   // Estados para el usuario actual
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState<Usuario | null>(null);
   const [loading, setLoading] = useState(true);
   
   // Cargar datos del usuario desde AsyncStorage
@@ -39,9 +46,10 @@ export default function HomeScreen() {
   }, []);
 
   // Obtener información del usuario actual
-  const saludo = currentUser?.genero ? "Bienvenido" : "Bienvenida";
+  const saludo = currentUser?.genero === "M" ? "Bienvenido" : "Bienvenida";
   const nombreUsuario = currentUser ? `${currentUser.nombre} ${currentUser.apellido}` : "Usuario";
-  const logo = currentUser?.genero 
+  const logo = currentUser?.genero
+
     ? "https://cdn-icons-png.flaticon.com/512/3135/3135715.png" // Hombre
     : "https://cdn-icons-png.flaticon.com/512/3135/3135789.png"; // Mujer
 
