@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from "react";
-import { 
-  View, 
-  Text, 
-  Image, 
-  StyleSheet, 
-  TouchableOpacity, 
-  Linking, 
+import { router } from 'expo-router';
+import React, { useEffect, useState } from "react";
+import {
   Alert,
-  ScrollView
+  Image,
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from "react-native";
-import { useLocalSearchParams, router } from 'expo-router';
 import { AuthService } from "../../lib/authService";
 
 export default function HomeScreen() {
@@ -47,7 +47,7 @@ export default function HomeScreen() {
 
   // 🔧 Configuración del bot (debería venir de una API o configuración)
   const botConfig = {
-    phone: "56981381756", // Tu número del bot
+    phone: "56937888616", // Tu número del bot
     message: "Hola, necesito hablar con DucoBot"
   };
 
