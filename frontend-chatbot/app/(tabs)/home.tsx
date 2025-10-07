@@ -56,7 +56,7 @@ export default function HomeScreen() {
   // 🔧 Configuración del bot (debería venir de una API o configuración)
   const botConfig = {
     phone: "56937888616", // Tu número del bot
-    message: "Hola, necesito hablar con DucoBot"
+    message: "Hola, necesito ayuda"
   };
 
   const openWhatsApp = () => {
