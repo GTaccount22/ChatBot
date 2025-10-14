@@ -4,6 +4,8 @@ import React, { createContext, ReactNode, useContext, useEffect, useState } from
 interface ThemeContextType {
   isDarkMode: boolean;
   toggleDarkMode: () => void;
+  setThemeMode: (mode: 'light' | 'dark') => void;
+  themeMode: 'light' | 'dark';
   colors: {
     background: string;
     surface: string;
@@ -32,7 +34,7 @@ interface ThemeProviderProps {
 }
 
 const lightColors = {
-  background: '#FFFFFF',
+  background: '#EBE6E6',
   surface: '#F8F9FA',
   text: '#2C3E50',
   textSecondary: '#7F8C8D',
@@ -40,7 +42,7 @@ const lightColors = {
   primary: '#007BFF',
   error: '#FF3B30',
   overlay: 'rgba(0,0,0,0.4)',
-  tabBarBackground: '#FFFFFF', // Blanco para la barra en modo claro
+  tabBarBackground: '#EBE6E6', // Gris claro neutro para la barra
 };
 
 const darkColors = {
@@ -56,7 +58,10 @@ const darkColors = {
 };
 
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [themeMode, setThemeModeState] = useState<'light' | 'dark'>('light');
+  
+  // Calcular si está en modo oscuro
+  const isDarkMode = themeMode === 'dark';
 
   useEffect(() => {
     loadThemePreference();
@@ -64,29 +69,39 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
 
   const loadThemePreference = async () => {
     try {
-      const savedTheme = await AsyncStorage.getItem('darkMode');
+      const savedTheme = await AsyncStorage.getItem('themeMode');
       if (savedTheme !== null) {
-        setIsDarkMode(JSON.parse(savedTheme));
+        setThemeModeState(savedTheme as 'light' | 'dark');
       }
     } catch (error) {
       console.error('Error loading theme preference:', error);
     }
   };
 
-  const toggleDarkMode = async () => {
+  const setThemeMode = async (mode: 'light' | 'dark') => {
     try {
-      const newTheme = !isDarkMode;
-      setIsDarkMode(newTheme);
-      await AsyncStorage.setItem('darkMode', JSON.stringify(newTheme));
+      setThemeModeState(mode);
+      await AsyncStorage.setItem('themeMode', mode);
     } catch (error) {
       console.error('Error saving theme preference:', error);
     }
   };
 
+  const toggleDarkMode = async () => {
+    const newMode = isDarkMode ? 'light' : 'dark';
+    await setThemeMode(newMode);
+  };
+
   const colors = isDarkMode ? darkColors : lightColors;
 
   return (
-    <ThemeContext.Provider value={{ isDarkMode, toggleDarkMode, colors }}>
+    <ThemeContext.Provider value={{ 
+      isDarkMode, 
+      toggleDarkMode, 
+      setThemeMode, 
+      themeMode, 
+      colors 
+    }}>
       {children}
     </ThemeContext.Provider>
   );

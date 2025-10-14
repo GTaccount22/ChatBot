@@ -12,39 +12,38 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
+        headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
-        headerShown: false,
         tabBarStyle: { 
           backgroundColor: colors.tabBarBackground, 
-          borderTopWidth: 1, 
-          borderTopColor: colors.border, 
+          borderTopWidth: 0, 
           paddingTop: Platform.OS === 'ios' ? 15 : 10,
           paddingBottom: Platform.OS === 'ios' ? 15 : 10, 
-          height: Platform.OS === 'ios' ? 105 : 85 
+          height: Platform.OS === 'ios' ? 105 : 85,
         },
-        tabBarLabelStyle: { display: 'none' },
+        tabBarLabelStyle: { display: 'none' }, // solo iconos
       }}
     >
+      {/* Tab Home */}
       <Tabs.Screen
         name="home"
         options={{
-          tabBarIcon: ({ color, size, focused }) => (
+          tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? "home" : "home-outline"} size={28} color={color} />
           ),
         }}
       />
+
+      {/* Tab Menu (abre modal, no navega) */}
       <Tabs.Screen
         name="menu"
         options={{
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? "menu" : "menu"} size={32} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="menu" size={32} color={color} />
           ),
           tabBarButton: (props) => (
-            <TouchableOpacity
-              onPress={openMenu}
-              style={props.style}
-            >
+            <TouchableOpacity onPress={openMenu} style={props.style}>
               {props.children}
             </TouchableOpacity>
           ),

@@ -1,18 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    Animated,
-    Dimensions,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View
+  Animated,
+  Dimensions,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View
 } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTutorial } from '../contexts/TutorialContext';
 import RatingModal from './RatingModal';
 
 const { height: screenHeight } = Dimensions.get('window');
@@ -24,7 +24,8 @@ interface MenuModalProps {
 }
 
 export default function MenuModal({ visible, onClose, onLogout }: MenuModalProps) {
-  const { isDarkMode, toggleDarkMode, colors } = useTheme();
+  const { isDarkMode, toggleDarkMode, setThemeMode, themeMode, colors } = useTheme();
+  const { startTutorial, setIsManualTutorial } = useTutorial();
   const slideAnim = useRef(new Animated.Value(screenHeight)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [isRatingModalVisible, setIsRatingModalVisible] = useState(false);
@@ -74,6 +75,14 @@ export default function MenuModal({ visible, onClose, onLogout }: MenuModalProps
     setIsRatingModalVisible(false);
   };
 
+  const handleTutorialPress = () => {
+    closeModal();
+    // Usar la función global que ignora validación de BD
+    if ((window as any).startManualTutorial) {
+      (window as any).startManualTutorial();
+    }
+  };
+
   if (!visible) return null;
 
   const styles = StyleSheet.create({
@@ -86,8 +95,35 @@ export default function MenuModal({ visible, onClose, onLogout }: MenuModalProps
     content: { paddingHorizontal: 20, paddingTop: 20 },
     settingsSection: { marginBottom: 30 },
     sectionTitle: { fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: 15, marginLeft: 5 },
-    settingItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: 15, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: colors.border },
+    settingItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: 15, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: colors.border },
     settingText: { flex: 1, fontSize: 16, color: colors.text, marginLeft: 15, fontWeight: '500' },
+    themeOptions: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 10, marginBottom: 15 },
+    themeOption: { 
+      flex: 1, 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      backgroundColor: colors.surface, 
+      paddingVertical: 12, 
+      paddingHorizontal: 8, 
+      borderRadius: 8, 
+      marginHorizontal: 8, 
+      borderWidth: 1, 
+      borderColor: colors.border 
+    },
+    themeOptionSelected: { 
+      backgroundColor: colors.primary, 
+      borderColor: colors.primary 
+    },
+    themeOptionText: { 
+      fontSize: 14, 
+      color: colors.text, 
+      marginLeft: 6, 
+      fontWeight: '500' 
+    },
+    themeOptionTextSelected: { 
+      color: '#FFFFFF' 
+    },
   });
 
   return (
@@ -109,20 +145,51 @@ export default function MenuModal({ visible, onClose, onLogout }: MenuModalProps
                 <View style={styles.settingsSection}>
                   <Text style={styles.sectionTitle}>Configuración</Text>
                   
+                  {/* Modo de tema */}
                   <View style={styles.settingItem}>
-                    <Ionicons name="moon-outline" size={24} color={colors.primary} />
-                    <Text style={styles.settingText}>Activar modo oscuro</Text>
-                    <Switch
-                      value={isDarkMode}
-                      onValueChange={toggleDarkMode}
-                      trackColor={{ false: colors.border, true: colors.primary }}
-                      thumbColor={isDarkMode ? '#FFFFFF' : '#F4F3F4'}
-                    />
+                    <Ionicons name="color-palette-outline" size={24} color={colors.primary} />
+                    <Text style={styles.settingText}>Tema</Text>
+                  </View>
+                  
+                  {/* Opciones de tema */}
+                  <View style={styles.themeOptions}>
+                    <TouchableOpacity 
+                      style={[styles.themeOption, themeMode === 'light' && styles.themeOptionSelected]} 
+                      onPress={() => setThemeMode('light')}
+                    >
+                      <Ionicons 
+                        name="sunny-outline" 
+                        size={20} 
+                        color={themeMode === 'light' ? '#FFFFFF' : colors.text} 
+                      />
+                      <Text style={[styles.themeOptionText, themeMode === 'light' && styles.themeOptionTextSelected]}>
+                        Claro
+                      </Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity 
+                      style={[styles.themeOption, themeMode === 'dark' && styles.themeOptionSelected]} 
+                      onPress={() => setThemeMode('dark')}
+                    >
+                      <Ionicons 
+                        name="moon-outline" 
+                        size={20} 
+                        color={themeMode === 'dark' ? '#FFFFFF' : colors.text} 
+                      />
+                      <Text style={[styles.themeOptionText, themeMode === 'dark' && styles.themeOptionTextSelected]}>
+                        Oscuro
+                      </Text>
+                    </TouchableOpacity>
                   </View>
 
                   <TouchableOpacity style={styles.settingItem} onPress={openRatingModal}>
                     <Ionicons name="star-outline" size={24} color={colors.primary} />
                     <Text style={styles.settingText}>Califica nuestra App</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.settingItem} onPress={handleTutorialPress}>
+                    <Ionicons name="help-circle-outline" size={24} color={colors.primary} />
+                    <Text style={styles.settingText}>Tutorial App</Text>
                   </TouchableOpacity>
                 </View>
 
