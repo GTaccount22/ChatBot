@@ -112,6 +112,77 @@ app.delete("/api/questions/:id", async (req, res) => {
   }
 });
 
+// ------------------- ENDPOINTS DE CALIFICACIONES -------------------
+
+// GET /api/ratings -> Listar todas las calificaciones
+app.get("/api/ratings", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("calificaciones").select("*").order("id", { ascending: false });
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error al obtener calificaciones" });
+  }
+});
+
+// POST /api/ratings -> Crear nueva calificación
+app.post("/api/ratings", async (req, res) => {
+  const { nombre, correo, modalidad, calificacion, comentario } = req.body;
+
+  // Validación básica
+  if (!nombre || !correo || !calificacion) {
+    console.log("❌ Campos faltantes:", req.body);
+    return res.status(400).json({ error: "Los campos nombre, correo y calificacion son requeridos" });
+  }
+
+  try {
+    console.log("Intentando crear calificación:", { nombre, correo, modalidad, calificacion, comentario });
+    const { data, error } = await supabase
+      .from("calificaciones")
+      .insert([{ nombre, correo, modalidad, calificacion, comentario }])
+      .select();
+
+    if (error) {
+      console.error("Error insertando en Supabase:", error);
+      return res.status(500).json({ error: "Error al crear la calificación", details: error.message });
+    }
+
+    console.log("✅ Calificación creada:", data[0]);
+    res.status(201).json(data[0]);
+  } catch (err) {
+    console.error("Excepción al crear calificación:", err);
+    res.status(500).json({ error: "Error interno al crear la calificación", details: err.message });
+  }
+});
+
+// PUT /api/ratings/:id -> Editar calificación existente
+app.put("/api/ratings/:id", async (req, res) => {
+  const { id } = req.params;
+  const { nombre, correo, modalidad, calificacion, comentario } = req.body;
+  try {
+    const { data, error } = await supabase.from("calificaciones").update({ nombre, correo, modalidad, calificacion, comentario }).eq("id", id).select();
+    if (error) throw error;
+    res.json(data[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error al actualizar la calificación" });
+  }
+});
+
+// DELETE /api/ratings/:id -> Eliminar calificación
+app.delete("/api/ratings/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { data, error } = await supabase.from("calificaciones").delete().eq("id", id).select();
+    if (error) throw error;
+    res.json({ message: "Calificación eliminada", deleted: data[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error al eliminar la calificación" });
+  }
+});
+
 // ------------------------------------------------------
 // Ruta principal
 app.get("/", (req, res) => {

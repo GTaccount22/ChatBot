@@ -1,20 +1,22 @@
-import React, { useState, useEffect } from "react";
 import { Redirect } from 'expo-router';
+import React, { useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  Image,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-  Dimensions,
-  Platform
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useTheme } from "../contexts/ThemeContext";
 import { AuthService } from "../lib/authService";
 
 interface User {
@@ -27,6 +29,7 @@ interface User {
 }
 
 export default function App() {
+  const { colors, isDarkMode } = useTheme();
   const [rut, setRut] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -58,8 +61,9 @@ export default function App() {
         justifyContent: "flex-start",
         paddingTop: basePaddingTop,
         paddingHorizontal: basePaddingHorizontal,
-        paddingBottom: 30,
-        backgroundColor: "#E8E2E2",
+        paddingBottom: Platform.OS === 'android' ? 100 : 30,
+        backgroundColor: colors.background,
+        minHeight: height,
       },
       logoContainer: {
         alignItems: "center",
@@ -72,43 +76,55 @@ export default function App() {
         fontWeight: "bold",
         textAlign: "center",
         marginBottom: 5,
-        color: "#2c3e50",
+        color: colors.text,
         fontFamily: "Jost",
       },
       welcomeSubtitle: {
         fontSize: subtitleFontSize,
         textAlign: "center",
         marginBottom: 20,
-        color: "#2c3e50",
+        color: colors.textSecondary,
         lineHeight: isTablet ? 28 : 24,
         paddingHorizontal: 20,
         fontFamily: "Jost",
       },
       inputContainer: { 
-        marginBottom: 20, 
-        marginTop: 35 
+        marginBottom: Platform.OS === 'android' ? 50 : 25, 
+        marginTop: Platform.OS === 'android' ? 60 : 40,
+        paddingHorizontal: 10,
+        width: '100%',
+        paddingBottom: Platform.OS === 'android' ? 20 : 0,
       },
       inputLabel: {
-        fontSize: isTablet ? 22 : isSmallScreen ? 16 : 18,
-        fontWeight: "600",
+        fontSize: isTablet ? 22 : isSmallScreen ? 18 : 20,
+        fontWeight: "700",
         marginBottom: 15,
-        color: "#2c3e50",
-        fontFamily: "Jost",
+        color: colors.text,
+        fontFamily: Platform.OS === 'android' ? 'Roboto' : 'Jost',
         textAlign: "center",
+        letterSpacing: 0.5,
       },
       input: {
-        backgroundColor: "#fff",
-        padding: isTablet ? 22 : 18,
+        backgroundColor: colors.surface,
+        paddingHorizontal: isTablet ? 22 : 20,
+        paddingVertical: isTablet ? 18 : 16,
         borderRadius: 12,
-        borderWidth: 1,
-        borderColor: "#ddd",
+        borderWidth: 2,
+        borderColor: colors.primary,
         fontSize: inputFontSize,
-        color: "#2c3e50",
-        height: isTablet ? 65 : isSmallScreen ? 50 : 55,
-        fontFamily: "Jost",
+        color: colors.text,
+        minHeight: isTablet ? 65 : isSmallScreen ? 55 : 60,
+        fontFamily: Platform.OS === 'android' ? 'Roboto' : 'Jost',
+        textAlign: "center",
+        fontWeight: "500",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
       },
       button: {
-        backgroundColor: "#007BFF",
+        backgroundColor: colors.primary,
         paddingVertical: isTablet ? 22 : isSmallScreen ? 15 : 18,
         paddingHorizontal: isTablet ? 50 : 40,
         borderRadius: 12,
@@ -138,7 +154,7 @@ export default function App() {
       loadingText: {
         marginTop: 20,
         fontSize: isTablet ? 18 : isSmallScreen ? 14 : 16,
-        color: "#666",
+        color: colors.textSecondary,
         fontFamily: "Jost",
       },
     });
@@ -243,7 +259,7 @@ export default function App() {
   if (loading && step === 'rut') {
     return (
       <View style={[responsiveStyles.container, responsiveStyles.loadingContainer]}>
-        <ActivityIndicator size="large" color="#007BFF" />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={responsiveStyles.loadingText}>Verificando sesión...</Text>
       </View>
     );
@@ -254,47 +270,68 @@ export default function App() {
   }
 
   return (
-    <ScrollView contentContainerStyle={responsiveStyles.container}>
-      <View style={responsiveStyles.logoContainer}>
-        <Image
-          source={require('../assets/images/logoDuoc.png')}
-          style={responsiveStyles.logoImage}
-          resizeMode="contain"
-        />
-      </View>
+    <KeyboardAvoidingView 
+      style={{ flex: 1 }} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    >
+      <ScrollView 
+        contentContainerStyle={responsiveStyles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <View style={responsiveStyles.logoContainer}>
+              <Image
+                source={
+                  isDarkMode 
+                    ? require('../assets/images/logo_duoc.png')
+                    : require('../assets/images/logoDuoc.png')
+                }
+                style={responsiveStyles.logoImage}
+                resizeMode="contain"
+              />
+        </View>
 
-      {step === 'rut' && (
-        <>
-          <Text style={responsiveStyles.welcomeTitle}>¡Te damos la Bienvenida!</Text>
-          <Text style={responsiveStyles.welcomeSubtitle}>
-            Aprovecha al máximo tu experiencia académica con Duoc
-          </Text>
+        {step === 'rut' && (
+          <>
+            <Text style={responsiveStyles.welcomeTitle}>¡Te damos la Bienvenida!</Text>
+            <Text style={responsiveStyles.welcomeSubtitle}>
+              Aprovecha al máximo tu experiencia académica con Duoc
+            </Text>
 
-          <View style={responsiveStyles.inputContainer}>
-            <Text style={responsiveStyles.inputLabel}>Ingresa tu RUT</Text>
-            <TextInput
-              style={responsiveStyles.input}
-              placeholder="11.111.111-1"
-              value={rut}
-              onChangeText={handleRutChange}
-              keyboardType="default"
-              maxLength={12}
-            />
-          </View>
+            <View style={responsiveStyles.inputContainer}>
+              <Text style={responsiveStyles.inputLabel}>Ingresa tu RUT</Text>
+              <TextInput
+                style={responsiveStyles.input}
+                placeholder="11.111.111-1"
+                placeholderTextColor="#999"
+                value={rut}
+                onChangeText={handleRutChange}
+                keyboardType="default"
+                maxLength={12}
+                autoCapitalize="none"
+                autoCorrect={false}
+                selectTextOnFocus={true}
+                underlineColorAndroid="transparent"
+                returnKeyType="done"
+              />
+            </View>
 
-          <TouchableOpacity
-            style={[responsiveStyles.button, loading && responsiveStyles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={responsiveStyles.buttonText}>Iniciar Sesión</Text>
-            )}
-          </TouchableOpacity>
-        </>
-      )}
-    </ScrollView>
+            <TouchableOpacity
+              style={[responsiveStyles.button, loading && responsiveStyles.buttonDisabled]}
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={responsiveStyles.buttonText}>Iniciar Sesión</Text>
+              )}
+            </TouchableOpacity>
+          </>
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

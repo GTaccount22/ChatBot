@@ -1,70 +1,72 @@
-# Getting Started with Create React App
+# Panel de Administrador - Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Este es el frontend del sistema de gestión de preguntas y respuestas con sidebar de navegación.
 
-## Available Scripts
+## Características
 
-In the project directory, you can run:
+- 🏠 **Panel de Administrador**: Gestión completa de preguntas y respuestas
+- ⭐ **Calificaciones**: Sistema de gestión de calificaciones (en desarrollo)
+- 📱 **Responsive**: Funciona en desktop y móvil
+- 🎨 **Diseño elegante**: Interfaz moderna con gradientes y animaciones
 
-### `npm start`
+## Configuración
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### Variables de Entorno
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+Crea un archivo `.env` en la raíz del proyecto con:
 
-### `npm test`
+```env
+REACT_APP_API_URL=http://localhost:4000
+```
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+**Nota**: El backend debe estar corriendo en el puerto 4000. El backend usa Supabase como base de datos y está configurado en `../ChatBot/questionsApi.js`.
 
-### `npm run build`
+### Instalación
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+```bash
+npm install
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Ejecución
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```bash
+npm start
+```
 
-### `npm run eject`
+## Modo Demo
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Si el backend no está disponible, la aplicación funcionará en modo demo con datos de ejemplo. Se mostrará un banner amarillo indicando que está en modo demo.
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## Estructura del Proyecto
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+```
+src/
+├── App.js                 # Componente principal con sidebar
+├── services/
+│   └── questionService.js # Servicio para API de preguntas
+└── ...
+```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## API Endpoints
 
-## Learn More
+El frontend se conecta al backend en `../ChatBot/questionsApi.js` con los siguientes endpoints:
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+- `GET /api/questions` - Obtener todas las preguntas
+- `POST /api/questions` - Crear nueva pregunta
+- `PUT /api/questions/:id` - Actualizar pregunta
+- `DELETE /api/questions/:id` - Eliminar pregunta
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+### Base de Datos
 
-### Code Splitting
+El backend usa **Supabase** con la tabla `questions` que contiene:
+- `id` (serial primary key)
+- `category` (text)
+- `question` (text)
+- `answer` (text)
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+## Tecnologías Utilizadas
 
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+- React 19
+- Material-UI (MUI)
+- Axios para peticiones HTTP
+- CSS-in-JS con Emotion
