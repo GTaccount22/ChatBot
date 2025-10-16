@@ -103,7 +103,7 @@ app.post("/webhook", async (req, res) => {
         console.log("📩 Mensaje recibido de:", from, "Texto:", text);
 
         if (
-          ["hi", "hola", "menu", "opciones", "inicio", "ayuda", "hola, necesito ayuda"].includes(text.toLowerCase())
+          ["hi", "hola", "menu", "opciones", "inicio", "ayuda", "hola, necesito ayuda, volver, Volver"].includes(text.toLowerCase())
           || text.toLowerCase().includes("duco")
         ) {
           userStates.set(from, { category: null });
@@ -278,7 +278,7 @@ async function handleCategorySelection(from, categoryName) {
     const numberSymbol = circleNumbers[index] || `${index + 1}.`;
     messageText += `${numberSymbol} ${q.question}\n`;
   });
-  messageText += `\n💡 Escribe el número de la pregunta\n🔙 Escribe *volver* para regresar`;
+  messageText += `\n💡 Escribe el número de la pregunta\n🔙 Escribe *Menú* para regresar`;
 
   userStates.set(from, { category: categoryName });
   await sendMessage(from, messageText);
