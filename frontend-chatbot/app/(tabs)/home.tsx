@@ -1,18 +1,19 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  Alert,
-  Dimensions,
-  InteractionManager,
-  Linking,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    Alert,
+    Dimensions,
+    InteractionManager,
+    Linking,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useTutorial } from "../../contexts/TutorialContext";
 import { AuthService } from "../../lib/authService";
+import { socketService } from "../../lib/socketService";
 import { TutorialService } from "../../lib/tutorialService";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -43,12 +44,33 @@ function HomeScreen() {
   
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null);
   const [loading, setLoading] = useState(true);
+  const tutorialEnviadoRef = useRef(false);
 
   const tutorialSteps: TutorialStep[] = [
     { id: 'welcome', text: '¡Bienvenido! Aquí puedes ver tu mensaje de bienvenida personalizado', target: 'welcome' },
     { id: 'mainButton', text: 'Este es el botón principal para contactar con DucoBot, nuestro asistente virtual disponible las 24 horas', target: 'mainButton' },
     { id: 'menu', text: 'Desde aquí puedes acceder a la configuración, calificar la aplicación, ver este tutorial y cerrar sesión', target: 'menu' }
   ];
+
+  // Función protegida para enviar tutorial completado solo una vez
+  const enviarTutorialCompletado = async () => {
+    if (tutorialEnviadoRef.current) {
+      console.log('⚠️ Tutorial ya fue enviado, evitando duplicado');
+      return;
+    }
+    
+    tutorialEnviadoRef.current = true;
+    console.log('🎓 Enviando tutorial completado...');
+    
+    const sessionData = await AuthService.loadSession();
+    if (sessionData?.user) {
+      socketService.enviarTutorialCompletado({
+        usuario_id: sessionData.user.id,
+        fecha_completado: new Date().toISOString(),
+        es_primer_tutorial: true
+      });
+    }
+  };
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -118,6 +140,9 @@ function HomeScreen() {
         const result = await TutorialService.markTutorialAsSeen();
         if (!result.success) {
           console.error('Error finishing tutorial:', result.error);
+        } else {
+          // Enviar evento de tutorial completado (solo una vez)
+          await enviarTutorialCompletado();
         }
       }
     } catch (error) {

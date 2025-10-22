@@ -16,8 +16,12 @@ import {
 import { useTheme } from '../contexts/ThemeContext';
 import { AuthService } from '../lib/authService';
 import { EvaluationData, EvaluationService } from '../lib/evaluationService';
+import { SamsungInputUtils, useProtectedInput } from '../lib/inputUtils';
+import { socketService } from '../lib/socketService';
 
-const { height: screenHeight } = Dimensions.get('window');
+const { height: screenHeight, width: screenWidth } = Dimensions.get('window');
+const isSmallScreen = screenHeight < 700;
+const isTablet = screenWidth > 768;
 
 interface RatingModalProps {
   visible: boolean;
@@ -37,6 +41,9 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
   const [satisfaction, setSatisfaction] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // Hook para manejo protegido de inputs
+  const { handleChange: handleProtectedChange } = useProtectedInput();
 
   useEffect(() => {
     if (visible) {
@@ -69,7 +76,9 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
       if (sessionData?.user) {
         const userData = sessionData.user.user_metadata || sessionData.user;
         setCurrentUser(userData);
-        setEmail(userData.email || '');
+        // Obtener el correo del usuario autenticado
+        const userEmail = sessionData.user.email || userData.email_institucional || '';
+        setEmail(userEmail);
       }
     } catch (error) {
       // Error silencioso para mejor UX
@@ -117,8 +126,31 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
       };
 
       const result = await EvaluationService.submitEvaluation(evaluationData);
+      console.log('📊 Resultado del envío:', result);
 
       if (result.success) {
+        // Enviar evento de nueva calificación al servidor
+        const fechaActual = new Date();
+        const fecha = fechaActual.toLocaleDateString('es-CL');
+        const hora = fechaActual.toLocaleTimeString('es-CL', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        });
+        
+        const calificacionEnviada = socketService.enviarNuevaCalificacion({
+          nombre: currentUser?.nombre || 'Usuario',
+          calificacion: satisfaction,
+          comentario: comments.trim() || undefined,
+          fecha: fecha,
+          hora: hora,
+          modalidad: studyModality === 'sede' ? 'Sede' : '100% Online',
+          email: email.trim() || currentUser?.email_institucional || ''
+        });
+
+        if (calificacionEnviada) {
+          // Calificación enviada exitosamente
+        }
+
         Alert.alert(
           '¡Gracias!', 
           'Tu evaluación ha sido enviada exitosamente. Tu opinión es muy importante para nosotros.',
@@ -132,6 +164,7 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
           }}]
         );
       } else {
+        console.error('❌ Error en envío:', result.error);
         Alert.alert('Error', result.error || 'No se pudo enviar la evaluación. Inténtalo de nuevo.');
       }
     } catch (error) {
@@ -145,11 +178,26 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
     scrollViewRef.current?.scrollTo({ y, animated: true });
   };
 
+  // Funciones protegidas contra duplicación en Samsung
+  const handleEmailChange = (text: string) => {
+    handleProtectedChange(text, setEmail, SamsungInputUtils.formatEmail);
+  };
+
+  const handleCommentsChange = (text: string) => {
+    handleProtectedChange(text, setComments, SamsungInputUtils.formatComments);
+  };
+
   if (!visible) return null;
 
   const styles = StyleSheet.create({
     overlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
-    modalContainer: { backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, height: screenHeight * 0.95 },
+    modalContainer: { 
+      backgroundColor: colors.background, 
+      borderTopLeftRadius: 20, 
+      borderTopRightRadius: 20, 
+      height: isSmallScreen ? screenHeight * 0.98 : screenHeight * 0.95,
+      maxHeight: screenHeight * 0.98,
+    },
     handle: { width: 40, height: 4, backgroundColor: colors.border, borderRadius: 2, alignSelf: 'center', marginVertical: 8 },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: colors.border },
     title: { fontSize: 24, fontWeight: 'bold', color: colors.text },
@@ -162,17 +210,70 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
     questionNumber: { fontSize: 16, fontWeight: '600', color: colors.text, marginRight: 8 },
     questionText: { fontSize: 16, fontWeight: '600', color: colors.text, flex: 1 },
     editIcon: { marginLeft: 8 },
-    radioContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-    radioButton: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, marginRight: 10, alignItems: 'center', justifyContent: 'center' },
-    radioSelected: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
-    radioText: { fontSize: 16, color: colors.text },
+    radioContainer: { 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      marginBottom: 12,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      backgroundColor: colors.surface,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    radioButton: { 
+      width: 24, 
+      height: 24, 
+      borderRadius: 12, 
+      borderWidth: 2, 
+      marginRight: 12, 
+      alignItems: 'center', 
+      justifyContent: 'center',
+      backgroundColor: 'transparent',
+    },
+    radioSelected: { 
+      width: 12, 
+      height: 12, 
+      borderRadius: 6, 
+      backgroundColor: colors.primary 
+    },
+    radioText: { 
+      fontSize: 16, 
+      color: colors.text,
+      fontWeight: '500',
+      marginLeft: 8,
+    },
     hintText: { fontSize: 14, color: colors.textSecondary, marginBottom: 10 },
     inputField: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 15, paddingVertical: 12, fontSize: 16, color: colors.text, marginBottom: 10 },
     textArea: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 15, paddingVertical: 12, fontSize: 16, color: colors.text, height: 100, textAlignVertical: 'top' },
-    ratingContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10, paddingHorizontal: 5 },
-    starButton: { padding: 8 },
-    ratingLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20, paddingHorizontal: 5 },
-    ratingLabel: { fontSize: 11, color: colors.textSecondary, textAlign: 'center', width: 65, lineHeight: 14 },
+    ratingContainer: { 
+      flexDirection: 'row', 
+      justifyContent: 'space-around', 
+      alignItems: 'center',
+      marginBottom: 15, 
+      paddingHorizontal: 10,
+      minHeight: 60,
+    },
+    starButton: { 
+      padding: 12,
+      borderRadius: 8,
+      backgroundColor: 'transparent',
+    },
+    ratingLabels: { 
+      flexDirection: 'row', 
+      justifyContent: 'space-between', 
+      marginBottom: 20, 
+      paddingHorizontal: 10,
+      alignItems: 'center',
+    },
+    ratingLabel: { 
+      fontSize: 12, 
+      color: colors.textSecondary, 
+      textAlign: 'center', 
+      flex: 1,
+      lineHeight: 16,
+      fontWeight: '500',
+    },
     submitButton: { backgroundColor: colors.primary, paddingVertical: 15, borderRadius: 8, alignItems: 'center', marginTop: 20 },
     submitButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
     asterisk: { color: '#FF3B30' },
@@ -241,17 +342,24 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
                     <Text style={styles.asterisk}>*</Text>
                   </View>
                   
-                  <Text style={styles.hintText}>Esto nos permite validar tu opinión 😊</Text>
+                  <Text style={styles.hintText}>
+                    {email && currentUser 
+                      ? 'Tu correo institucional se ha cargado automáticamente 😊' 
+                      : 'Esto nos permite validar tu opinión 😊'
+                    }
+                  </Text>
                   
                   <TextInput
-                    style={styles.inputField}
+                    style={[styles.inputField, email && currentUser && { backgroundColor: colors.surface, opacity: 0.8 }]}
                     placeholder="Escriba una dirección de correo electrónico"
                     placeholderTextColor={colors.textSecondary}
                     value={email}
-                    onChangeText={(text) => setEmail(text.toLowerCase())}
+                    onChangeText={handleEmailChange}
                     keyboardType="email-address"
                     autoCapitalize="none"
+                    autoCorrect={false}
                     onFocus={() => scrollToField(200)}
+                    editable={!currentUser || !email}
                   />
                 </View>
 
@@ -267,12 +375,10 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
                     placeholder="Escriba su respuesta"
                     placeholderTextColor={colors.textSecondary}
                     value={comments}
-                    onChangeText={(text) => {
-                      const formatted = text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
-                      setComments(formatted);
-                    }}
+                    onChangeText={handleCommentsChange}
                     multiline
                     numberOfLines={4}
+                    autoCorrect={false}
                     onFocus={() => scrollToField(450)}
                   />
                 </View>
@@ -290,11 +396,12 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
                         key={rating}
                         style={styles.starButton}
                         onPress={() => setSatisfaction(rating)}
+                        activeOpacity={0.7}
                       >
                         <Ionicons 
                           name={(satisfaction || 0) >= rating ? "star" : "star-outline"} 
-                          size={32} 
-                          color={(satisfaction || 0) >= rating ? "#FFD700" : colors.border} 
+                          size={40} 
+                          color={(satisfaction || 0) >= rating ? "#FFD700" : colors.textSecondary} 
                         />
                       </TouchableOpacity>
                     ))}

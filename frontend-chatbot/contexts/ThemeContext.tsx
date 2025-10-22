@@ -34,27 +34,27 @@ interface ThemeProviderProps {
 }
 
 const lightColors = {
-  background: '#EBE6E6',
+  background: '#FFFFFF',
   surface: '#F8F9FA',
-  text: '#2C3E50',
-  textSecondary: '#7F8C8D',
-  border: '#E5E5EA',
+  text: '#000000',
+  textSecondary: '#666666',
+  border: '#CCCCCC',
   primary: '#007BFF',
   error: '#FF3B30',
   overlay: 'rgba(0,0,0,0.4)',
-  tabBarBackground: '#EBE6E6', // Gris claro neutro para la barra
+  tabBarBackground: '#FFFFFF',
 };
 
 const darkColors = {
-  background: '#15151D', // Color específico de fondo
-  surface: '#524e5c', // Color para superficies elevadas
-  text: '#FFFFFF', // Texto principal en blanco
-  textSecondary: '#B0B0B0', // Texto secundario en gris claro
-  border: '#69605c', // Bordes en gris
-  primary: '#A988F2', // Morado claro para botones
+  background: '#000000',
+  surface: '#1C1C1E',
+  text: '#FFFFFF',
+  textSecondary: '#CCCCCC',
+  border: '#333333',
+  primary: '#007AFF',
   error: '#FF3B30',
-  overlay: 'rgba(16,13,17,0.8)', // Overlay usando #100d11
-  tabBarBackground: '#302E40', // Color específico para la barra
+  overlay: 'rgba(0,0,0,0.8)',
+  tabBarBackground: '#1C1C1E',
 };
 
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {

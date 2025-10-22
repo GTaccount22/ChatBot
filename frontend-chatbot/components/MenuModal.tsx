@@ -1,15 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Animated,
-  Dimensions,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View
+    Animated,
+    Dimensions,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View
 } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTutorial } from '../contexts/TutorialContext';
@@ -95,7 +95,17 @@ export default function MenuModal({ visible, onClose, onLogout }: MenuModalProps
     content: { paddingHorizontal: 20, paddingTop: 20 },
     settingsSection: { marginBottom: 30 },
     sectionTitle: { fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: 15, marginLeft: 5 },
-    settingItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: 15, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: colors.border },
+    settingItem: { 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      backgroundColor: colors.surface, 
+      padding: 18, 
+      borderRadius: 12, 
+      marginBottom: 15, 
+      borderWidth: 1, 
+      borderColor: colors.border,
+      minHeight: 60,
+    },
     settingText: { flex: 1, fontSize: 16, color: colors.text, marginLeft: 15, fontWeight: '500' },
     themeOptions: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 10, marginBottom: 15 },
     themeOption: { 
@@ -183,19 +193,19 @@ export default function MenuModal({ visible, onClose, onLogout }: MenuModalProps
                   </View>
 
                   <TouchableOpacity style={styles.settingItem} onPress={openRatingModal}>
-                    <Ionicons name="star-outline" size={24} color={colors.primary} />
+                    <Ionicons name="star-outline" size={28} color={colors.primary} />
                     <Text style={styles.settingText}>Califica nuestra App</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity style={styles.settingItem} onPress={handleTutorialPress}>
-                    <Ionicons name="help-circle-outline" size={24} color={colors.primary} />
+                    <Ionicons name="help-circle-outline" size={28} color={colors.primary} />
                     <Text style={styles.settingText}>Tutorial App</Text>
                   </TouchableOpacity>
                 </View>
 
                 {/* Botón Cerrar Sesión */}
                 <TouchableOpacity style={styles.settingItem} onPress={onLogout}>
-                  <Ionicons name="log-out-outline" size={24} color={colors.primary} />
+                  <Ionicons name="log-out-outline" size={28} color={colors.primary} />
                   <Text style={styles.settingText}>Cerrar Sesión</Text>
                 </TouchableOpacity>
               </ScrollView>

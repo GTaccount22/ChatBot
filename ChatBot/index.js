@@ -120,12 +120,13 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// 📚 Obtener preguntas por categoría desde Supabase
+// 📚 Obtener preguntas por categoría desde Supabase (solo activas)
 async function getQuestionsByCategory(categoryName) {
   const { data, error } = await supabase
     .from("questions")
     .select("id, question, answer")
     .eq("category", categoryName)
+    .eq("is_active", true) // Solo preguntas activas
     .order("id", { ascending: true });
 
   if (error) {
@@ -141,6 +142,7 @@ async function buildMenu() {
   const { data, error } = await supabase
     .from("questions")
     .select("category, id")
+    .eq("is_active", true) // Solo preguntas activas
     .order("id", { ascending: true });
 
   if (error) {
@@ -150,7 +152,6 @@ async function buildMenu() {
 
   const categories = [...new Set(data.map((q) => q.category))];
   
-
 
   let menuText =
     "¡Hola! 👋 Bienvenido a DucoChat.\nEstamos aquí para ayudarte 24/7.\n\n📋 *Opciones disponibles:*\n\n";
@@ -175,16 +176,6 @@ async function sendMainMenu(to) {
 // ------------------- LÓGICA DE NAVEGACIÓN -------------------
 async function handleNavigation(from, text) {
   const userState = userStates.get(from) || { category: null, questionIndex: null };
-
-  // 👉 Retroceder a la pregunta anterior
-  if (text.toLowerCase() === "volver" && userState.category !== null) {
-    // Si estamos viendo una pregunta, mostrar nuevamente la lista de preguntas de la categoría
-    await handleCategorySelection(from, userState.category);
-    // Reiniciamos el índice de pregunta porque ya no estamos en ninguna pregunta
-    userStates.set(from, { category: userState.category, questionIndex: null });
-    return;
-  }
-
 
   // 👉 Si ya está en categoría y escribe un número → es una pregunta
   if (userState.category && (text.match(/^[0-9]+$/) || text.match(/^[①②③④⑤⑥⑦⑧⑨⑩]$/))) {
@@ -231,7 +222,7 @@ async function handleNavigation(from, text) {
 
   await sendMessage(
     from,
-    "❓ No entendí tu mensaje. Escribe *menú* para ver las opciones."
+      "No entendí tu mensaje. Escribe *Menú* para ver las opciones."
   );
 }
 
@@ -243,7 +234,7 @@ async function handleQuestionInCategory(from, categoryName, questionNumber) {
   if (!questions[questionIndex]) {
     await sendMessage(
       from,
-      "❌ Pregunta no encontrada. Escribe *menú* para volver."
+      "Pregunta no encontrada. Escribe *Menú* para volver."
     );
     return;
   }
@@ -255,7 +246,13 @@ async function handleQuestionInCategory(from, categoryName, questionNumber) {
 
   await sendMessage(
     from,
-    `❓ *${question.question}*\n\n✅ ${question.answer}\n\n🔙 Escribe *menú* para volver al inicio.\n↩️ Escribe *volver* para regresar a la lista de preguntas.`
+    `*${question.question}*\n\n✅ ${question.answer}`
+  );
+
+  // Enviar mensaje separado con opciones de navegación
+  await sendMessage(
+    from,
+    `🔙 Escribe *Menú* para volver al inicio.\n\nEn caso de que no estés conforme con esta respuesta haz click acá https://experienciavivo.duoc.cl/alumnos/solicitudes`
   );
 }
 
@@ -278,7 +275,7 @@ async function handleCategorySelection(from, categoryName) {
     const numberSymbol = circleNumbers[index] || `${index + 1}.`;
     messageText += `${numberSymbol} ${q.question}\n`;
   });
-  messageText += `\n💡 Escribe el número de la pregunta\n🔙 Escribe *volver* para regresar`;
+  messageText += `\n💡 Escribe el número de la pregunta\n🔙 Escribe *Menú* para volver al inicio.`;
 
   userStates.set(from, { category: categoryName });
   await sendMessage(from, messageText);

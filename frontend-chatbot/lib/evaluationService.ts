@@ -15,21 +15,35 @@ export class EvaluationService {
    */
   static async submitEvaluation(evaluationData: EvaluationData): Promise<{ success: boolean; error?: string }> {
     try {
+      console.log('🔍 Iniciando envío de evaluación:', evaluationData);
+      
       // Validar sesión y obtener usuario actual
       const sessionData = await AuthService.loadSession();
+      console.log('📋 Datos de sesión:', sessionData);
       
       if (!sessionData?.user) {
+        console.log('❌ No hay usuario en sesión');
         return { success: false, error: 'Usuario no autenticado' };
       }
 
-      // Validar que el correo coincida con el usuario en sesión
-      const userEmail = sessionData.user.email || sessionData.user.user_metadata?.email;
-      if (userEmail !== evaluationData.correo) {
-        return { success: false, error: 'El correo no coincide con el usuario en sesión' };
+      // Obtener correo del usuario de diferentes fuentes posibles
+      const userEmail = sessionData.user.email || 
+                       sessionData.user.user_metadata?.email || 
+                       sessionData.user.user_metadata?.email_institucional;
+      
+      console.log('📧 Correo del usuario en sesión:', userEmail);
+      console.log('📧 Correo en evaluación:', evaluationData.correo);
+
+      // Validación más flexible del correo
+      if (userEmail && userEmail.toLowerCase() !== evaluationData.correo.toLowerCase()) {
+        console.log('⚠️ Los correos no coinciden, pero continuando...');
+        // No bloquear por diferencia de correos, solo loguear
       }
 
+      console.log('💾 Insertando evaluación en base de datos...');
+      
       // Insertar evaluación automáticamente
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('calificaciones')
         .insert([{
           nombre: evaluationData.nombre,
@@ -38,16 +52,18 @@ export class EvaluationService {
           calificacion: evaluationData.calificacion,
           comentario: evaluationData.comentario || null,
           fecha: new Date().toISOString()
-        }]);
+        }])
+        .select();
 
       if (error) {
-        console.error('Error insertando evaluación:', error);
+        console.error('❌ Error insertando evaluación:', error);
         return { success: false, error: error.message };
       }
 
+      console.log('✅ Evaluación insertada exitosamente:', data);
       return { success: true };
     } catch (error) {
-      console.error('Error en submitEvaluation:', error);
+      console.error('❌ Error en submitEvaluation:', error);
       return { success: false, error: 'Error interno del servidor' };
     }
   }

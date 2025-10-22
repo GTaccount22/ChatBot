@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from "react";
-import { getQuestions, createQuestion, updateQuestion, deleteQuestion } from "./services/questionService";
+import React, { useEffect, useState, useCallback } from "react";
+import { getQuestions, createQuestion, updateQuestion, deleteQuestion, toggleQuestionState } from "./services/questionService";
 import { getRatings } from "./services/ratingService";
+import { io } from "socket.io-client";
+import { COLOR_PALETTES, COMMON_STYLES, SELECT_MENU_PROPS } from "./constants/styles";
 import {
   Container,
   Typography,
@@ -27,17 +29,16 @@ import {
   Chip,
   Card,
   CardContent,
-  Divider,
   Drawer,
   List,
   ListItem,
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  AppBar,
-  Toolbar,
   useTheme,
-  useMediaQuery
+  useMediaQuery,
+  Switch,
+  FormControlLabel
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -47,7 +48,8 @@ import CategoryIcon from "@mui/icons-material/Category";
 import QuestionAnswerIcon from "@mui/icons-material/QuestionAnswer";
 import HomeIcon from "@mui/icons-material/Home";
 import GradeIcon from "@mui/icons-material/Grade";
-import MenuIcon from "@mui/icons-material/Menu";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
+import LightModeIcon from "@mui/icons-material/LightMode";
 
 function App() {
   const theme = useTheme();
@@ -60,6 +62,7 @@ function App() {
   // Admin panel state
   const [questions, setQuestions] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [questionStates, setQuestionStates] = useState({});
   const [category, setCategory] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [questionText, setQuestionText] = useState("");
@@ -68,26 +71,153 @@ function App() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [selectedFilterCategory, setSelectedFilterCategory] = useState("");
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const savedMode = localStorage.getItem('darkMode');
+    return savedMode !== null ? JSON.parse(savedMode) : true;
+  });
+  
+  // Estados para Socket.IO y datos históricos
+  const [socket, setSocket] = useState(null);
+  const [historicalData, setHistoricalData] = useState(null);
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
+  
+  // Ratings state
+  const [ratings, setRatings] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedFilterModalidad, setSelectedFilterModalidad] = useState("");
+
+  const colors = isDarkMode ? COLOR_PALETTES.dark : COLOR_PALETTES.light;
 
   useEffect(() => {
     loadQuestions();
   }, []);
 
+  useEffect(() => {
+    localStorage.setItem('darkMode', JSON.stringify(isDarkMode));
+  }, [isDarkMode]);
+
+  // Inicializar estados de preguntas cuando se cargan
+  useEffect(() => {
+    if (questions.length > 0) {
+      const initialStates = {};
+      questions.forEach(q => {
+        // Usar el campo is_active del backend, o true por defecto si no existe
+        initialStates[q.id] = q.is_active !== undefined ? q.is_active : true;
+      });
+      setQuestionStates(prev => ({ ...prev, ...initialStates }));
+    }
+  }, [questions]);
+
   const loadQuestions = async () => {
     try {
     const data = await getQuestions();
     setQuestions(data);
-      const uniqueCategories = [...new Set(data.map(q => q.category))];
-      setCategories(uniqueCategories);
-    } catch (error) {
-      console.error('Error loading questions:', error);
-    }
+    const uniqueCategories = [...new Set(data.map(q => q.category))];
+    setCategories(uniqueCategories);
+  } catch (error) {
+    console.error('Error loading questions:', error);
+  }
   };
-  
-  // Filtrar preguntas por categoría seleccionada
-  const filteredQuestions = selectedFilterCategory 
-    ? questions.filter(q => q.category === selectedFilterCategory)
-    : questions;
+
+  const loadRatings = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await getRatings();
+      setRatings(data);
+    } catch (error) {
+      console.error('Error loading ratings:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Inicializar Socket.IO y obtener datos históricos
+  useEffect(() => {
+    // Conectar al servidor Socket.IO
+    const newSocket = io('http://localhost:3001');
+    setSocket(newSocket);
+
+    // Eventos de conexión
+    newSocket.on('connect', () => {
+      console.log('✅ Conectado a Socket.IO');
+      setSocketConnected(true);
+    });
+
+    newSocket.on('disconnect', () => {
+      console.log('❌ Desconectado de Socket.IO');
+      setSocketConnected(false);
+    });
+
+    newSocket.on('connect_error', (error) => {
+      console.error('❌ Error de conexión Socket.IO:', error);
+      setSocketConnected(false);
+    });
+
+    // Escuchar eventos del servidor
+    newSocket.on('actualizar_conteo', ({ fecha, total }) => {
+      console.log('📊 Conteo actualizado:', { fecha, total });
+      console.log('📊 Datos históricos antes:', historicalData);
+      
+      // Activar animación
+      console.log('🎬 Activando animación de contador...');
+      setIsAnimating(true);
+      
+      // Actualizar directamente el estado sin hacer fetch
+      setHistoricalData(prev => {
+        const newData = { ...prev, [fecha]: total };
+        console.log('📊 Datos históricos después:', newData);
+        return newData;
+      });
+      
+      
+      // Desactivar animación después de un tiempo
+      setTimeout(() => {
+        console.log('🎬 Desactivando animación de contador...');
+        setIsAnimating(false);
+      }, 1000);
+    });
+
+    newSocket.on('actualizar_calificaciones', (data) => {
+      console.log('⭐ Nueva calificación recibida:', data);
+      // Recargar las calificaciones automáticamente
+      loadRatings();
+    });
+
+    // Escuchar cuando se complete un tutorial
+    newSocket.on('tutorial_completado', (data) => {
+      console.log('🎓 Tutorial completado:', data);
+      console.log('🎓 Timestamp:', new Date().toISOString());
+      // El contador se actualizará automáticamente cuando llegue 'actualizar_conteo'
+    });
+
+    // Escuchar cuando se reinicien los contadores
+    newSocket.on('contadores_reiniciados', (data) => {
+      console.log('🔄 Contadores reiniciados:', data);
+      // Limpiar datos históricos
+      setHistoricalData({});
+    });
+
+    // Consultar datos históricos
+    fetch('http://localhost:3001/api/usuarios-por-dia')
+      .then(res => res.json())
+      .then(data => {
+        console.log('📊 Datos históricos:', data);
+        setHistoricalData(data);
+      })
+      .catch(error => {
+        console.error('❌ Error obteniendo datos históricos:', error);
+      });
+
+    // Cleanup al desmontar
+    return () => {
+      newSocket.off('actualizar_conteo');
+      newSocket.off('actualizar_calificaciones');
+      newSocket.off('tutorial_completado');
+      newSocket.off('contadores_reiniciados');
+      newSocket.close();
+    };
+  }, [loadRatings]);
 
   const handleSubmit = async () => {
     const catToSend = category === "__new__" ? newCategory : category;
@@ -130,6 +260,37 @@ function App() {
     setDeleteDialogOpen(true);
   };
 
+  const handleToggleQuestionState = async (questionId) => {
+    console.log('Toggle question state for ID:', questionId);
+    console.log('Current state:', questionStates[questionId]);
+    
+    try {
+      // Llamar al backend para cambiar el estado
+      const updatedQuestion = await toggleQuestionState(questionId);
+      console.log('Updated question from backend:', updatedQuestion);
+      
+      // Actualizar el estado local
+      setQuestionStates(prev => {
+        const newState = {
+          ...prev,
+          [questionId]: updatedQuestion.is_active
+        };
+        console.log('New state:', newState);
+        return newState;
+      });
+    } catch (error) {
+      console.error('Error toggling question state:', error);
+      // En caso de error, revertir el cambio local
+      alert('Error al cambiar el estado de la pregunta');
+    }
+  };
+
+  // Función para capitalizar la primera letra
+  const capitalizeFirstLetter = (text) => {
+    if (!text) return text;
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  };
+
   const drawerWidth = 280;
 
   const menuItems = [
@@ -163,9 +324,22 @@ function App() {
           handleDelete={handleDelete}
           confirmDelete={confirmDelete}
           loadQuestions={loadQuestions}
+          colors={colors}
+          questionStates={questionStates}
+          handleToggleQuestionState={handleToggleQuestionState}
+          capitalizeFirstLetter={capitalizeFirstLetter}
         />;
       case 'ratings':
-        return <RatingsTab />;
+        return <RatingsTab 
+          ratings={ratings}
+          loading={loading}
+          selectedFilterModalidad={selectedFilterModalidad}
+          setSelectedFilterModalidad={setSelectedFilterModalidad}
+          colors={colors}
+          loadRatings={loadRatings}
+          historicalData={historicalData}
+          isAnimating={isAnimating}
+        />;
       default:
         return <AdminPanel 
           questions={questions}
@@ -190,6 +364,7 @@ function App() {
           handleDelete={handleDelete}
           confirmDelete={confirmDelete}
           loadQuestions={loadQuestions}
+          colors={colors}
         />;
     }
   };
@@ -208,18 +383,20 @@ function App() {
           '& .MuiDrawer-paper': {
             width: drawerWidth,
             boxSizing: 'border-box',
-            backgroundColor: '#2C2C34',
-            borderRight: '1px solid rgba(255,255,255,0.1)',
+            backgroundColor: colors.cardBackground,
+            borderRight: `1px solid ${colors.borderColor}`,
             boxShadow: '4px 0 20px rgba(0,0,0,0.3)',
+            display: 'flex',
+            flexDirection: 'column'
           },
         }}
       >
-        <Box sx={{ p: 3, textAlign: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <Box sx={{ p: 3, textAlign: 'center', borderBottom: `1px solid ${colors.borderColor}` }}>
           <Typography
             variant="h5"
             sx={{
               fontWeight: 700,
-              color: '#FFFFFF',
+              color: colors.textPrimary,
               fontSize: '1.5rem',
               letterSpacing: '0.05em',
               fontFamily: "'Playfair Display', serif"
@@ -230,7 +407,7 @@ function App() {
           <Typography
             variant="body2"
             sx={{
-              color: '#B0B0B0',
+              color: colors.textSecondary,
               mt: 1,
               fontSize: '0.9rem'
             }}
@@ -250,29 +427,29 @@ function App() {
                 selected={activeTab === item.id}
                 sx={{
                   borderRadius: 2,
-                  backgroundColor: activeTab === item.id ? 'rgba(169, 136, 242, 0.2)' : 'transparent',
-                  border: activeTab === item.id ? '1px solid #A988F2' : '1px solid transparent',
+                  backgroundColor: activeTab === item.id ? `${colors.buttonColor}20` : 'transparent',
+                  border: activeTab === item.id ? `1px solid ${colors.buttonColor}` : '1px solid transparent',
                   transition: 'all 0.3s ease',
                   '&:hover': {
-                    backgroundColor: 'rgba(169, 136, 242, 0.1)',
+                    backgroundColor: `${colors.buttonColor}10`,
                     transform: 'translateX(4px)',
                   },
                   '&.Mui-selected': {
-                    backgroundColor: 'rgba(255,255,255,0.15)',
+                    backgroundColor: `${colors.buttonColor}20`,
                     '&:hover': {
-                      backgroundColor: 'rgba(255,255,255,0.2)',
+                      backgroundColor: `${colors.buttonColor}30`,
                     },
                   },
                 }}
               >
-                <ListItemIcon sx={{ color: activeTab === item.id ? '#A988F2' : '#B0B0B0', minWidth: 40 }}>
+                <ListItemIcon sx={{ color: activeTab === item.id ? colors.buttonColor : colors.textSecondary, minWidth: 40 }}>
                   {item.icon}
                 </ListItemIcon>
                 <ListItemText
                   primary={item.label}
                   sx={{
                     '& .MuiListItemText-primary': {
-                      color: activeTab === item.id ? '#FFFFFF' : '#B0B0B0',
+                      color: activeTab === item.id ? colors.textPrimary : colors.textSecondary,
                       fontWeight: activeTab === item.id ? 600 : 400,
                       fontSize: '0.95rem',
                     },
@@ -282,6 +459,78 @@ function App() {
             </ListItem>
           ))}
         </List>
+        
+        {/* Toggle de modo oscuro/claro */}
+        <Box sx={{ 
+          p: 2, 
+          borderTop: `1px solid ${colors.borderColor}`,
+          mt: 'auto'
+        }}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={isDarkMode}
+                onChange={(e) => setIsDarkMode(e.target.checked)}
+                sx={{
+                  '& .MuiSwitch-switchBase.Mui-checked': {
+                    color: colors.buttonColor,
+                  },
+                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                    backgroundColor: colors.buttonColor,
+                  },
+                }}
+              />
+            }
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {isDarkMode ? (
+                  <DarkModeIcon sx={{ fontSize: 18, color: colors.textPrimary }} />
+                ) : (
+                  <LightModeIcon sx={{ fontSize: 18, color: colors.textPrimary }} />
+                )}
+                <Typography sx={{ 
+                  color: colors.textPrimary,
+                  fontSize: '0.9rem',
+                  fontWeight: 500
+                }}>
+                  {isDarkMode ? 'Modo Oscuro' : 'Modo Claro'}
+                </Typography>
+              </Box>
+            }
+            sx={{ 
+              m: 0,
+              width: '100%',
+              justifyContent: 'center'
+            }}
+          />
+        </Box>
+        
+        {/* Indicador de conexión Socket.IO */}
+        <Box sx={{ p: 2, borderTop: `1px solid ${colors.borderColor}` }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+    <Box
+      sx={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                backgroundColor: socketConnected ? '#4CAF50' : '#F44336',
+                animation: socketConnected ? 'pulse 2s infinite' : 'none',
+                '@keyframes pulse': {
+                  '0%': { opacity: 1 },
+                  '50%': { opacity: 0.5 },
+                  '100%': { opacity: 1 }
+                }
+              }}
+            />
+            <Typography sx={{ 
+              color: colors.textSecondary,
+              fontSize: '0.8rem',
+              fontWeight: 500
+            }}>
+              Sincronización activa: {socketConnected ? 'Conectado' : 'Desconectado'}
+            </Typography>
+          </Box>
+        </Box>
       </Drawer>
 
       {/* Main Content */}
@@ -291,7 +540,7 @@ function App() {
           flexGrow: 1,
           width: { md: `calc(100% - ${drawerWidth}px)` },
           minHeight: '100vh',
-          background: '#15151D',
+          background: colors.background,
         }}
       >
         
@@ -327,12 +576,16 @@ function AdminPanel({
   handleEdit,
   handleDelete,
   confirmDelete,
-  loadQuestions
+  loadQuestions,
+  colors,
+  questionStates,
+  handleToggleQuestionState,
+  capitalizeFirstLetter
 }) {
   const categories = [...new Set(questions.map((q) => q.category))];
   
   // Filtrar preguntas por categoría seleccionada
-  const filteredQuestions = selectedFilterCategory 
+  const filteredQuestions = selectedFilterCategory && selectedFilterCategory !== "todas"
     ? questions.filter(q => q.category === selectedFilterCategory)
     : questions;
 
@@ -360,7 +613,7 @@ function AdminPanel({
             <Typography
               variant="h3"
               sx={{
-                color: "rgba(255,255,255,0.7)",
+                color: colors.textPrimary,
                 fontWeight: 200,
                 fontSize: { xs: "1.1rem", md: "1.4rem" },
                 letterSpacing: "0.1em",
@@ -388,19 +641,10 @@ function AdminPanel({
           <Card
             sx={{
               mb: 4,
-              maxHeight: "500px", // Altura máxima para evitar sobreposición
-              background: "#2C2C34",
-              backdropFilter: "blur(10px)",
-              borderRadius: 4,
-              boxShadow: "0 20px 40px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.1), inset 0 1px 0 rgba(255,255,255,0.2)",
-              border: "1px solid rgba(255,255,255,0.2)",
-              transition: "all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
-              transform: "perspective(1000px) rotateX(2deg)",
-              overflow: "hidden", 
-              "&:hover": {
-                transform: "perspective(1000px) rotateX(0deg) translateY(-8px) scale(1.02)",
-                boxShadow: "0 30px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.2), inset 0 1px 0 rgba(255,255,255,0.3)"
-              }
+              maxHeight: "500px",
+              background: colors.cardBackground,
+              ...COMMON_STYLES.card,
+              overflow: "hidden"
             }}
           >
             <CardContent sx={{ 
@@ -411,12 +655,12 @@ function AdminPanel({
               overflow: "auto" 
             }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
-                <AddIcon sx={{ color: "#FFFFFF", fontSize: 28 }} />
+                <AddIcon sx={{ color: colors.textPrimary, fontSize: 28 }} />
                 <Typography
                   variant="h5"
                   sx={{
                     fontWeight: 700,
-                    color: "#FFFFFF"
+                    color: colors.textPrimary
                   }}
                 >
                   Crear Nueva Pregunta
@@ -431,40 +675,15 @@ function AdminPanel({
                 sx={{ flex: 1 }}
               >
                 <FormControl sx={{ minWidth: 200, flex: 1 }}>
-                  <InputLabel sx={{ color: "#FFFFFF" }}>Categoría</InputLabel>
+                  <InputLabel sx={{ color: colors.textPrimary }}>Categoría</InputLabel>
                   <Select
                     value={category}
                     label="Categoría"
                     onChange={(e) => setCategory(e.target.value)}
-                    MenuProps={{
-                      PaperProps: {
-                        style: {
-                          maxHeight: 150, // Altura controlada para evitar sobreposición
-                          overflow: 'auto',
-                          borderRadius: '8px',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                          scrollbarWidth: 'thin',
-                          scrollbarColor: '#475569 #f1f1f1',
-                          '&::-webkit-scrollbar': {
-                            width: '6px'
-                          },
-                          '&::-webkit-scrollbar-track': {
-                            background: '#302E40',
-                            borderRadius: '3px'
-                          },
-                          '&::-webkit-scrollbar-thumb': {
-                            background: '#475569',
-                            borderRadius: '3px'
-                          },
-                          '&::-webkit-scrollbar-thumb:hover': {
-                            background: '#334155'
-                          }
-                        }
-                      }
-                    }}
+                    MenuProps={SELECT_MENU_PROPS}
                     sx={{
                       borderRadius: 2,
-                      backgroundColor: "#393249",
+                      backgroundColor: colors.inputBackground,
                       "& .MuiOutlinedInput-notchedOutline": {
                         borderColor: "#B0B0B0",
                         borderWidth: 2
@@ -477,7 +696,7 @@ function AdminPanel({
                         borderWidth: 2
                       },
                       "& .MuiSelect-select": {
-                        color: "#FFFFFF"
+                        color: colors.textPrimary
                       }
                     }}
                   >
@@ -503,13 +722,13 @@ function AdminPanel({
                     <TextField
                       label="Nueva categoría"
                       value={newCategory}
-                      onChange={(e) => setNewCategory(e.target.value)}
+                      onChange={(e) => setNewCategory(capitalizeFirstLetter(e.target.value))}
                       sx={{
                         flex: 1,
                         minWidth: 250,
                         "& .MuiOutlinedInput-root": {
                           borderRadius: 2,
-                          backgroundColor: "#393249",
+                          backgroundColor: colors.inputBackground,
                           boxShadow: "0 4px 8px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.1)",
                           transition: "all 0.3s ease",
                           transform: "perspective(1000px) rotateX(2deg)",
@@ -533,11 +752,11 @@ function AdminPanel({
                             borderWidth: 2
                           },
                           "& .MuiInputBase-input": {
-                            color: "#FFFFFF"
+                            color: colors.textPrimary
                           }
                         },
                         "& .MuiInputLabel-root": {
-                          color: "#FFFFFF"
+                          color: colors.textPrimary
                         },
                         "& .MuiInputLabel-root.Mui-focused": {
                           color: "#A988F2"
@@ -550,13 +769,13 @@ function AdminPanel({
                 <TextField
                   label="Pregunta"
                   value={questionText}
-                  onChange={(e) => setQuestionText(e.target.value)}
+                  onChange={(e) => setQuestionText(capitalizeFirstLetter(e.target.value))}
                   sx={{
                     flex: 2,
                     minWidth: 250, // Reducido de 300 a 250
                     "& .MuiOutlinedInput-root": {
                       borderRadius: 2,
-                      backgroundColor: "#393249",
+                      backgroundColor: colors.inputBackground,
                       "& fieldset": {
                         borderColor: "#B0B0B0",
                         borderWidth: 2
@@ -569,11 +788,11 @@ function AdminPanel({
                         borderWidth: 2
                       },
                       "& .MuiInputBase-input": {
-                        color: "#FFFFFF"
+                        color: colors.textPrimary
                       }
                     },
                     "& .MuiInputLabel-root": {
-                      color: "#FFFFFF"
+                      color: colors.textPrimary
                     },
                     "& .MuiInputLabel-root.Mui-focused": {
                       color: "#A988F2"
@@ -583,13 +802,13 @@ function AdminPanel({
                 <TextField
                   label="Respuesta"
                   value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
+                  onChange={(e) => setAnswer(capitalizeFirstLetter(e.target.value))}
                   sx={{
                     flex: 2,
                     minWidth: 250, // Reducido de 300 a 250
                     "& .MuiOutlinedInput-root": {
                       borderRadius: 2,
-                      backgroundColor: "#393249",
+                      backgroundColor: colors.inputBackground,
                       "& fieldset": {
                         borderColor: "#B0B0B0",
                         borderWidth: 2
@@ -602,11 +821,11 @@ function AdminPanel({
                         borderWidth: 2
                       },
                       "& .MuiInputBase-input": {
-                        color: "#FFFFFF"
+                        color: colors.textPrimary
                       }
                     },
                     "& .MuiInputLabel-root": {
-                      color: "#FFFFFF"
+                      color: colors.textPrimary
                     },
                     "& .MuiInputLabel-root.Mui-focused": {
                       color: "#A988F2"
@@ -621,24 +840,24 @@ function AdminPanel({
                   sx={{
                     height: 50, // Reducido de 60 a 50
                     borderRadius: 3,
-                    background: "linear-gradient(145deg, #475569 0%, #334155 50%, #1e293b 100%)",
+                    background: "linear-gradient(145deg, #A988F2 0%, #8B6BCF 50%, #7C4EDB 100%)",
                     color: "white",
                     fontWeight: 700,
                     fontSize: "1rem", 
                     px: 3, 
                     minWidth: 120, 
-                    boxShadow: "0 8px 16px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(0,0,0,0.2)",
-                    border: "1px solid rgba(255,255,255,0.1)",
+                    boxShadow: "0 8px 16px rgba(169, 136, 242, 0.3), inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(0,0,0,0.2)",
+                    border: `1px solid ${colors.borderColor}`,
                     transition: "all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
                     transform: "perspective(1000px) rotateX(5deg)",
                     "&:hover": {
-                      background: "linear-gradient(145deg, #334155 0%, #1e293b 50%, #0f172a 100%)",
+                      background: "linear-gradient(145deg, #8B6BCF 0%, #7C4EDB 50%, #6A3BC7 100%)",
                       transform: "perspective(1000px) rotateX(0deg) translateY(-4px) scale(1.05)",
-                      boxShadow: "0 12px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.3), inset 0 -1px 0 rgba(0,0,0,0.3)"
+                      boxShadow: "0 12px 24px rgba(169, 136, 242, 0.4), inset 0 1px 0 rgba(255,255,255,0.3), inset 0 -1px 0 rgba(0,0,0,0.3)"
                     },
                     "&:active": {
                       transform: "perspective(1000px) rotateX(2deg) translateY(-2px) scale(0.98)",
-                      boxShadow: "0 4px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.4)"
+                      boxShadow: "0 4px 8px rgba(169, 136, 242, 0.3), inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.4)"
                     }
                   }}
                 >
@@ -654,7 +873,7 @@ function AdminPanel({
           <Card
             sx={{
               mb: 4,
-              background: "#2C2C34",
+              background: colors.cardBackground,
               backdropFilter: "blur(10px)",
               borderRadius: 4,
               boxShadow: "0 20px 40px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.1), inset 0 1px 0 rgba(255,255,255,0.2)",
@@ -670,13 +889,13 @@ function AdminPanel({
             <CardContent sx={{ p: 3 }}>
               <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                  <FilterListIcon sx={{ color: "#FFFFFF", fontSize: 28 }} />
-                  <Typography variant="h6" sx={{ fontWeight: 600, color: "#FFFFFF" }}>
+                  <FilterListIcon sx={{ color: colors.textPrimary, fontSize: 28 }} />
+                  <Typography variant="h6" sx={{ fontWeight: 600, color: colors.textPrimary }}>
                     Filtrar por categoría
                   </Typography>
                 </Box>
                 <FormControl sx={{ minWidth: 250 }}>
-                  <InputLabel sx={{ color: "#FFFFFF" }}>Categoría</InputLabel>
+                  <InputLabel sx={{ color: colors.textPrimary }}>Categoría</InputLabel>
                   <Select
                     value={selectedFilterCategory}
                     label="Categoría"
@@ -695,35 +914,14 @@ function AdminPanel({
                         }, 300);
                       }
                     }}
-                    MenuProps={{
-                      PaperProps: {
-                        style: {
-                          maxHeight: 150, 
-                          overflow: 'auto',
-                          borderRadius: '8px',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                          scrollbarWidth: 'thin',
-                          scrollbarColor: '#475569 #f1f1f1',
-                          '&::-webkit-scrollbar': {
-                            width: '6px'
-                          },
-                          '&::-webkit-scrollbar-track': {
-                            background: '#302E40',
-                            borderRadius: '3px'
-                          },
-                          '&::-webkit-scrollbar-thumb': {
-                            background: '#475569',
-                            borderRadius: '3px'
-                          },
-                          '&::-webkit-scrollbar-thumb:hover': {
-                            background: '#334155'
-                          }
-                        }
-                      }
+                    renderValue={(value) => {
+                      if (!value || value === "todas") return "Todas las categorías";
+                      return value;
                     }}
+                    MenuProps={SELECT_MENU_PROPS}
                     sx={{
                       borderRadius: 2,
-                      backgroundColor: "#393249",
+                      backgroundColor: colors.inputBackground,
                       "& .MuiOutlinedInput-notchedOutline": {
                         borderColor: "#B0B0B0",
                         borderWidth: 2
@@ -736,11 +934,26 @@ function AdminPanel({
                         borderWidth: 2
                       },
                       "& .MuiSelect-select": {
-                        color: "#FFFFFF"
+                        color: `${colors.textPrimary} !important`
+                      },
+                      "& .MuiOutlinedInput-input": {
+                        color: `${colors.textPrimary} !important`
+                      },
+                      "& .MuiSelect-icon": {
+                        color: `${colors.textPrimary} !important`
+                      },
+                      "& .MuiPaper-root": {
+                        backgroundColor: "#FFFFFF",
+                        "& .MuiMenuItem-root": {
+                          color: "#000000 !important",
+                          "&:hover": {
+                            backgroundColor: "rgba(169, 136, 242, 0.1) !important"
+                          }
+                        }
                       }
                     }}
                   >
-                    <MenuItem value="">
+                    <MenuItem value="todas">
                       <em style={{ color: "#000000" }}>Todas las categorías</em>
                     </MenuItem>
                     {categories.map((cat) => (
@@ -753,15 +966,15 @@ function AdminPanel({
                     ))}
                   </Select>
                 </FormControl>
-                {selectedFilterCategory && (
+                {selectedFilterCategory && selectedFilterCategory !== "todas" && (
                   <Button
                     variant="outlined"
-                    onClick={() => setSelectedFilterCategory("")}
+                    onClick={() => setSelectedFilterCategory("todas")}
                     startIcon={<FilterListIcon />}
                     sx={{
                       borderRadius: 2,
                       borderColor: "#9933FF",
-                      color: "#FFFFFF",
+                      color: colors.textPrimary,
                       fontWeight: 600,
                       transition: "all 0.3s ease",
                       "&:hover": {
@@ -792,7 +1005,7 @@ function AdminPanel({
                           }
                         }}
                       />
-                      <Typography variant="body2" sx={{ color: "#FFFFFF", fontWeight: 500 }}>
+                      <Typography variant="body2" sx={{ color: colors.textPrimary, fontWeight: 500 }}>
                         en la categoría "{selectedFilterCategory}"
                       </Typography>
                     </Box>
@@ -806,7 +1019,7 @@ function AdminPanel({
         <Slide direction="up" in timeout={1600}>
           <Card
             sx={{
-              background: "#2C2C34",
+              background: colors.cardBackground,
               backdropFilter: "blur(10px)",
               borderRadius: 4,
               boxShadow: "0 20px 40px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.1), inset 0 1px 0 rgba(255,255,255,0.2)",
@@ -820,14 +1033,14 @@ function AdminPanel({
               }
             }}
           >
-            <Box sx={{ p: 3, borderBottom: "1px solid rgba(0,0,0,0.1)" }}>
+            <Box sx={{ p: 3, borderBottom: "1px solid #000000" }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                <QuestionAnswerIcon sx={{ color: "#FFFFFF", fontSize: 28 }} />
+                <QuestionAnswerIcon sx={{ color: colors.textPrimary, fontSize: 28 }} />
                 <Typography
                   variant="h5"
                   sx={{
                     fontWeight: 700,
-                    color: "#FFFFFF"
+                    color: colors.textPrimary
                   }}
                 >
                   Lista de Preguntas
@@ -846,11 +1059,12 @@ function AdminPanel({
             <TableContainer id="questions-table">
               <Table>
                 <TableHead>
-                  <TableRow sx={{ backgroundColor: "#302E40" }}>
+                  <TableRow sx={{ backgroundColor: colors.chipBackground }}>
                     {[
-                      { title: "Categoría", width: "15%" },
-                      { title: "Pregunta", width: "35%" },
-                      { title: "Respuesta", width: "35%" },
+                      { title: "Categoría", width: "12%" },
+                      { title: "Pregunta", width: "30%" },
+                      { title: "Respuesta", width: "30%" },
+                      { title: "Estado", width: "13%" },
                       { title: "Acciones", width: "15%" },
                     ].map((header) => (
                       <TableCell
@@ -858,11 +1072,11 @@ function AdminPanel({
                         sx={{
                           fontWeight: 700,
                           fontSize: "1rem",
-                          color: "#FFFFFF",
+                          color: colors.textPrimary,
                           borderBottom: "2px solid #475569",
                           py: 2
                         }}
-                        align={header.title === "Acciones" ? "center" : "left"}
+                        align={header.title === "Acciones" || header.title === "Estado" ? "center" : "left"}
                       >
                         {header.title}
                       </TableCell>
@@ -875,7 +1089,7 @@ function AdminPanel({
                       <TableRow
                         hover
                         sx={{
-                           backgroundColor: "#302E40",
+                           backgroundColor: colors.chipBackground,
                           transition: "all 0.3s ease",
                           "&:hover": {
                             backgroundColor: "rgba(102, 126, 234, 0.08)",
@@ -887,25 +1101,39 @@ function AdminPanel({
                           <Chip
                             label={q.category}
                             sx={{
-                              backgroundColor: "#302E40",
-                              color: "white",
+                              backgroundColor: colors.chipBackground,
+                              color: colors.textPrimary,
                               fontWeight: 600,
                               borderRadius: 2
                             }}
                           />
                         </TableCell>
-                        <TableCell sx={{ py: 2, fontWeight: 500, color: "#FFFFFF" }}>
+                        <TableCell sx={{ py: 2, fontWeight: 500, color: colors.textPrimary }}>
                           {q.question}
                         </TableCell>
-                        <TableCell sx={{ py: 2, color: "#FFFFFF" }}>
+                        <TableCell sx={{ py: 2, color: colors.textPrimary }}>
                           {q.answer}
+                        </TableCell>
+                        <TableCell sx={{ py: 2 }} align="center">
+                          <Switch
+                            checked={questionStates[q.id] === true}
+                            onChange={() => handleToggleQuestionState(q.id)}
+                            sx={{
+                              '& .MuiSwitch-switchBase.Mui-checked': {
+                                color: colors.buttonColor,
+                              },
+                              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                                backgroundColor: colors.buttonColor,
+                              },
+                            }}
+                          />
                         </TableCell>
                         <TableCell sx={{ py: 2 }} align="center">
                           <Stack direction="row" spacing={1} justifyContent="center">
                             <IconButton
                               onClick={() => handleEdit(q)}
                               sx={{
-                                color: "#FFFFFF",
+                                color: colors.textPrimary,
                                 transition: "all 0.3s ease",
                                 "&:hover": {
                                   backgroundColor: "rgba(102, 126, 234, 0.1)",
@@ -946,7 +1174,7 @@ function AdminPanel({
           PaperProps={{
             sx: {
               borderRadius: 4,
-              background: "#2C2C34",
+              background: colors.cardBackground,
               backdropFilter: "blur(10px)",
               boxShadow: "0 8px 32px rgba(0,0,0,0.2)"
             }
@@ -956,7 +1184,7 @@ function AdminPanel({
             textAlign: "center", 
             fontSize: "1.3rem", 
             fontWeight: 600,
-                color: "#FFFFFF",
+                    color: "#000000",
             py: 3
           }}>
              ¿Eliminar pregunta?
@@ -973,7 +1201,7 @@ function AdminPanel({
               sx={{
                 borderRadius: 2,
                 borderColor: "#475569",
-                color: "#FFFFFF",
+                    color: "#000000",
                 fontWeight: 600,
                 px: 3,
                 "&:hover": {
@@ -1006,26 +1234,11 @@ function AdminPanel({
 }
 
 // Ratings Tab Component
-function RatingsTab() {
-  const [ratings, setRatings] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedFilterModalidad, setSelectedFilterModalidad] = useState("");
+function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilterModalidad, colors, loadRatings, historicalData, isAnimating }) {
 
   useEffect(() => {
     loadRatings();
-  }, []);
-
-  const loadRatings = async () => {
-    try {
-      setLoading(true);
-      const data = await getRatings();
-      setRatings(data);
-    } catch (error) {
-      console.error('Error loading ratings:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [loadRatings]);
 
 
   return (
@@ -1036,7 +1249,7 @@ function RatingsTab() {
           <Typography
             variant="h3"
             sx={{
-              color: "rgba(255,255,255,0.7)",
+              color: colors.textPrimary,
               fontWeight: 200,
               fontSize: { xs: "1.1rem", md: "1.4rem" },
               letterSpacing: "0.1em",
@@ -1044,7 +1257,7 @@ function RatingsTab() {
               fontFamily: "'Inter', sans-serif"
             }}
           >
-            <span style={{ color: '#00d4ff' }}>✦</span> Reseñas de Usuarios <span style={{ color: '#00d4ff' }}>✦</span>
+            Reseñas de Usuarios
           </Typography>
           <Box
             sx={{
@@ -1064,7 +1277,7 @@ function RatingsTab() {
       <Slide direction="up" in timeout={1600}>
         <Card
           sx={{
-            background: "#2C2C34",
+            background: colors.cardBackground,
             backdropFilter: "blur(10px)",
             borderRadius: 4,
             boxShadow: "0 20px 40px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.1), inset 0 1px 0 rgba(255,255,255,0.2)",
@@ -1085,23 +1298,23 @@ function RatingsTab() {
                   display: "flex", 
                   alignItems: "center", 
                   gap: 2,
-                  backgroundColor: "#393249",
+                        backgroundColor: colors.ratingCardBackground,
                   borderRadius: 3,
                   p: 2,
-                  border: "1px solid rgba(255,255,255,0.1)"
+                  border: `1px solid ${colors.borderColor}`
                 }}>
-                  <GradeIcon sx={{ color: "#FFFFFF", fontSize: 28 }} />
+                  <GradeIcon sx={{ color: colors.textPrimary, fontSize: 28 }} />
                   <Typography
                     variant="h5"
                     sx={{
                       fontWeight: 700,
-                      color: "#FFFFFF"
+                      color: colors.textPrimary
                     }}
                   >
                     Lista de Reseñas
                   </Typography>
                   <Chip
-                    label={`${ratings.filter(rating => !selectedFilterModalidad || rating.modalidad === selectedFilterModalidad).length} reseña(s)`}
+                    label={`${ratings.filter(rating => !selectedFilterModalidad || selectedFilterModalidad === "todas" || rating.modalidad === selectedFilterModalidad).length} reseña(s)`}
                     sx={{
                       backgroundColor: "#A988F2",
                       color: "white",
@@ -1115,27 +1328,34 @@ function RatingsTab() {
                   display: "flex", 
                   alignItems: "center", 
                   gap: 2,
-                  backgroundColor: "#393249",
+                        backgroundColor: colors.ratingCardBackground,
                   borderRadius: 3,
                   p: 2,
-                  border: "1px solid rgba(255,255,255,0.1)"
+                  border: `1px solid ${colors.borderColor}`
                 }}>
                   <Typography
                     variant="body1"
                     sx={{
                       fontWeight: 600,
-                      color: "#FFFFFF"
+                      color: colors.textPrimary
                     }}
                   >
                     Filtrar:
                   </Typography>
                   <FormControl sx={{ minWidth: 120 }}>
+                    <InputLabel sx={{ color: colors.textPrimary, fontSize: '0.875rem' }}>Modalidad</InputLabel>
                     <Select
                       value={selectedFilterModalidad || ""}
+                      label="Modalidad"
                       onChange={(e) => setSelectedFilterModalidad(e.target.value)}
-                      displayEmpty
+                      renderValue={(value) => {
+                        if (!value || value === "todas") return "Todas";
+                        if (value === "Sede") return "Sede";
+                        if (value === "100% Online") return "100% Online";
+                        return value;
+                      }}
                       sx={{
-                        backgroundColor: "#393249",
+                        backgroundColor: colors.inputBackground,
                         borderRadius: 2,
                         "& .MuiOutlinedInput-notchedOutline": {
                           borderColor: "#B0B0B0",
@@ -1149,19 +1369,47 @@ function RatingsTab() {
                           borderWidth: 2
                         },
                         "& .MuiSelect-select": {
-                          color: "#FFFFFF"
+                          color: `${colors.textPrimary} !important`
+                        },
+                        "& .MuiSelect-select.MuiSelect-displayEmpty": {
+                          color: `${colors.textPrimary} !important`
+                        },
+                        "& .MuiInputBase-input": {
+                          color: `${colors.textPrimary} !important`
+                        },
+                        "& .MuiOutlinedInput-input": {
+                          color: `${colors.textPrimary} !important`
+                        },
+                        "& .MuiSelect-icon": {
+                          color: `${colors.textPrimary} !important`
+                        },
+                        "& .MuiPaper-root": {
+                          backgroundColor: "#FFFFFF",
+                          "& .MuiMenuItem-root": {
+                            color: "#000000 !important",
+                            "&:hover": {
+                              backgroundColor: "#F5F5F5"
+                            },
+                            "& em": {
+                              color: "#000000 !important"
+                            },
+                            "& .MuiTypography-root": {
+                              color: "#000000 !important"
+                            }
+                          }
                         }
                       }}
                     >
-                      <MenuItem value="">
-                        <em style={{ color: "#000000" }}>Todas</em>
-                      </MenuItem>
+                    <MenuItem value="todas">
+                      <em style={{ color: "#000000" }}>Todas</em>
+                    </MenuItem>
                       <MenuItem value="Sede">
                         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                           <Typography sx={{ color: "#000000" }}>🏫</Typography>
                           <Typography sx={{ color: "#000000" }}>Sede</Typography>
                         </Box>
                       </MenuItem>
+
                       <MenuItem value="100% Online">
                         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                           <Typography sx={{ color: "#000000" }}>💻</Typography>
@@ -1173,43 +1421,114 @@ function RatingsTab() {
                 </Box>
               </Box>
               
-              {/* Cuadro de promedio total */}
-              <Box sx={{
-                backgroundColor: "#393249",
-                borderRadius: 3,
-                p: 3,
-                minWidth: 200,
-                border: "1px solid rgba(255,255,255,0.1)",
-                textAlign: "center"
-              }}>
-                <Typography variant="h6" sx={{ color: "#FFFFFF", fontWeight: 600, mb: 1 }}>
-                  Promedio Total
-                </Typography>
-                <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 1, mb: 1 }}>
-                  <Typography variant="h4" sx={{ color: "#FFD700", fontWeight: 700 }}>
-                    {ratings.length > 0 ? (ratings.reduce((sum, rating) => sum + rating.calificacion, 0) / ratings.length).toFixed(1) : "0.0"}
+              {/* Cuadros de estadísticas */}
+              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+                {/* Cuadro de promedio total */}
+                <Box sx={{
+                  backgroundColor: colors.ratingCardBackground,
+                  borderRadius: 3,
+                  p: 3,
+                  minWidth: 200,
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  textAlign: "center",
+                  flex: 1
+                }}>
+                  <Typography variant="h6" sx={{ color: colors.textPrimary, fontWeight: 600, mb: 1 }}>
+                    Promedio Total
                   </Typography>
-                  <Typography variant="h6" sx={{ color: "#FFFFFF", opacity: 0.7 }}>
-                    / 5.0
+                  <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 1, mb: 1 }}>
+                    <Typography variant="h4" sx={{ 
+                      color: colors.textPrimary, 
+                      fontWeight: 700,
+                      fontFamily: "'Courier New', 'Monaco', 'Consolas', monospace",
+                      fontSize: '2.5rem',
+                      letterSpacing: '0.1em',
+                      fontVariantNumeric: 'tabular-nums'
+                    }}>
+                      {ratings.length > 0 ? (ratings.reduce((sum, rating) => sum + rating.calificacion, 0) / ratings.length).toFixed(1) : "0.0"}
+                    </Typography>
+                    <Typography variant="h6" sx={{ color: colors.textPrimary, opacity: 0.7 }}>
+                      / 5.0
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: "flex", justifyContent: "center", gap: 0.5 }}>
+                    {[...Array(5)].map((_, i) => {
+                      const average = ratings.length > 0 ? ratings.reduce((sum, rating) => sum + rating.calificacion, 0) / ratings.length : 0;
+                      return (
+                        <Typography key={i} sx={{ 
+                          color: i < average ? '#FFD700' : colors.textPrimary, 
+                          opacity: i < average ? 1 : 0.3,
+                          fontSize: '1.5rem'
+                        }}>
+                          ⭐
+                        </Typography>
+                      );
+                    })}
+                  </Box>
+                  <Typography variant="caption" sx={{ color: colors.textPrimary, opacity: 0.7 }}>
+                    {ratings.length} evaluación{ratings.length !== 1 ? 'es' : ''}
                   </Typography>
                 </Box>
-                <Box sx={{ display: "flex", justifyContent: "center", gap: 0.5 }}>
-                  {[...Array(5)].map((_, i) => {
-                    const average = ratings.length > 0 ? ratings.reduce((sum, rating) => sum + rating.calificacion, 0) / ratings.length : 0;
-                    return (
-                      <Typography key={i} sx={{ 
-                        color: i < average ? '#FFD700' : '#FFFFFF', 
-                        opacity: i < average ? 1 : 0.3,
-                        fontSize: '1.5rem'
-                      }}>
-                        ⭐
-                      </Typography>
-                    );
-                  })}
+
+                {/* Cuadro de usuarios nuevos por día */}
+                <Box sx={{
+                  backgroundColor: colors.ratingCardBackground,
+                  borderRadius: 3,
+                  p: 3,
+                  minWidth: 200,
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  textAlign: "center",
+                  flex: 1
+                }}>
+                  <Typography variant="h6" sx={{ color: colors.textPrimary, fontWeight: 600, mb: 1 }}>
+                    Usuarios Nuevos
+                  </Typography>
+                  <Box sx={{ 
+                    display: "flex", 
+                    justifyContent: "center", 
+                    alignItems: "center", 
+                    mb: 1,
+                    height: '4rem',
+                    width: '100%'
+                  }}>
+                    <Typography 
+                      variant="h2" 
+                      className={isAnimating ? 'digital-counter-animating' : ''}
+                      sx={{ 
+                        color: colors.textPrimary, 
+                        fontWeight: 700,
+                        fontFamily: "'Courier New', 'Monaco', 'Consolas', monospace",
+                        fontSize: '4rem',
+                        letterSpacing: '0.1em',
+                        transform: isAnimating ? 'translateY(-100%)' : 'translateY(0)',
+                        transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                        lineHeight: 1,
+                        fontVariantNumeric: 'tabular-nums',
+                        textAlign: 'center',
+                        ...(isAnimating && {
+                          animation: 'slideDown 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards'
+                        })
+                      }}
+                    >
+                      {historicalData && typeof historicalData === 'object' ? 
+                        Object.values(historicalData).reduce((sum, count) => sum + count, 0) : 0}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: "flex", justifyContent: "center", gap: 0.5, mb: 1 }}>
+                    <Typography sx={{ color: "#4CAF50", fontSize: '1.5rem' }}>
+                      🎓
+                    </Typography>
+                  </Box>
+                  <Typography variant="caption" sx={{ color: colors.textPrimary, opacity: 0.7 }}>
+                    {historicalData && typeof historicalData === 'object' && Object.keys(historicalData).length > 0 ? 
+                      Object.keys(historicalData).sort().pop() : 
+                      new Date().toLocaleDateString('es-CL')
+                    }
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: colors.textPrimary, opacity: 0.5, display: 'block', mt: 0.5 }}>
+                    (sesiones nuevas)
+                  </Typography>
                 </Box>
-                <Typography variant="caption" sx={{ color: "#FFFFFF", opacity: 0.7 }}>
-                  {ratings.length} evaluación{ratings.length !== 1 ? 'es' : ''}
-                </Typography>
               </Box>
             </Box>
           </Box>
@@ -1224,25 +1543,25 @@ function RatingsTab() {
             ) : ratings.length === 0 ? (
               <Box sx={{ textAlign: "center", py: 4 }}>
                 <GradeIcon sx={{ fontSize: 64, color: "rgba(255,255,255,0.3)", mb: 2 }} />
-                <Typography variant="h6" sx={{ color: "#FFFFFF" }}>
+                <Typography variant="h6" sx={{ color: colors.textPrimary }}>
                   No hay reseñas registradas
                 </Typography>
-                <Typography variant="body2" sx={{ color: "#FFFFFF", opacity: 0.7 }}>
+                <Typography variant="body2" sx={{ color: colors.textPrimary, opacity: 0.7 }}>
                   Las reseñas aparecerán aquí cuando los estudiantes las envíen
                 </Typography>
               </Box>
             ) : (
               <Stack spacing={2}>
                 {ratings
-                  .filter(rating => !selectedFilterModalidad || rating.modalidad === selectedFilterModalidad)
+                  .filter(rating => !selectedFilterModalidad || selectedFilterModalidad === "todas" || rating.modalidad === selectedFilterModalidad)
                   .map((rating, index) => (
                   <Fade in timeout={500 + index * 100} key={rating.id}>
                     <Card
                       sx={{
                         p: 3,
-                        backgroundColor: "#393249",
+                        backgroundColor: colors.inputBackground,
                         borderRadius: 3,
-                        border: "1px solid rgba(255,255,255,0.1)",
+                        border: `1px solid ${colors.borderColor}`,
                         transition: "all 0.3s ease",
                         "&:hover": {
                           backgroundColor: "rgba(169, 136, 242, 0.1)",
@@ -1263,17 +1582,17 @@ function RatingsTab() {
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              color: '#FFFFFF',
+                              color: colors.textPrimary,
                               fontWeight: 600,
                               fontSize: '1.1rem'
                             }}>
                               {rating.nombre ? rating.nombre.charAt(0).toUpperCase() : 'E'}
                             </Box>
                             <Box>
-                              <Typography variant="h6" sx={{ fontWeight: 600, color: "#FFFFFF", mb: 0.5 }}>
+                              <Typography variant="h6" sx={{ fontWeight: 600, color: colors.textPrimary, mb: 0.5 }}>
                                 {rating.nombre || 'Estudiante sin nombre'}
                               </Typography>
-                              <Typography variant="caption" sx={{ color: "#FFFFFF", opacity: 0.7 }}>
+                              <Typography variant="caption" sx={{ color: colors.textPrimary, opacity: 0.7 }}>
                                 {rating.fecha ? (() => {
                                   const date = new Date(rating.fecha);
                                   date.setHours(date.getHours() - 3); // Ajuste para Chile (UTC-3)
@@ -1317,7 +1636,7 @@ function RatingsTab() {
                             </Box>
                           </Box>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography variant="body2" sx={{ color: "#FFFFFF", opacity: 0.8 }}>
+                            <Typography variant="body2" sx={{ color: colors.textPrimary, opacity: 0.8 }}>
                               {rating.modalidad || 'Sin modalidad'}
                             </Typography>
                             <Box sx={{ 
@@ -1329,7 +1648,7 @@ function RatingsTab() {
                               alignItems: 'center',
                               justifyContent: 'center'
                             }}>
-                              <Typography sx={{ color: '#FFFFFF', fontSize: '0.8rem' }}>⭐</Typography>
+                              <Typography sx={{ color: colors.textPrimary, fontSize: '0.8rem' }}>⭐</Typography>
                             </Box>
                           </Box>
                         </Box>
@@ -1338,7 +1657,7 @@ function RatingsTab() {
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
                           {[...Array(5)].map((_, i) => (
                             <Typography key={i} sx={{ 
-                              color: i < rating.calificacion ? '#FFD700' : '#FFFFFF', 
+                              color: i < rating.calificacion ? '#FFD700' : colors.textPrimary, 
                               opacity: i < rating.calificacion ? 1 : 0.3,
                               fontSize: '1.2rem'
                             }}>
@@ -1350,7 +1669,7 @@ function RatingsTab() {
                         {/* Comentario */}
                         {rating.comentario && (
                           <Typography variant="body2" sx={{ 
-                            color: "#FFFFFF", 
+                            color: colors.textPrimary, 
                             opacity: 0.9,
                             lineHeight: 1.5
                           }}>
@@ -1360,7 +1679,7 @@ function RatingsTab() {
                         
                         {/* Información adicional */}
                         <Box sx={{ display: 'flex', gap: 2, opacity: 0.7 }}>
-                          <Typography variant="caption" sx={{ color: "#FFFFFF" }}>
+                          <Typography variant="caption" sx={{ color: colors.textPrimary }}>
                             📧 {rating.correo || 'Sin correo'}
                           </Typography>
                         </Box>

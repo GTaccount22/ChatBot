@@ -25,14 +25,16 @@ export class TutorialService {
         .from('tutorial_estado')
         .select('visto')
         .eq('user_id', userId)
-        .maybeSingle();
+        .eq('visto', true)
+        .limit(1);
 
       if (error) {
         console.error('Error checking tutorial status:', error);
         return false;
       }
 
-      const hasSeen = data?.visto === true;
+      // Si hay al menos un registro con visto=true, el tutorial ya fue visto
+      const hasSeen = data && data.length > 0;
       return hasSeen;
     } catch (error) {
       console.error('Error in hasSeenTutorial:', error);

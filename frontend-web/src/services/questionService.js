@@ -1,24 +1,4 @@
-import axios from "axios";
-
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:4000";
-
-// Configuración de axios con manejo de errores
-const api = axios.create({
-  baseURL: API_URL,
-  timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-// Interceptor para manejar errores
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    console.error('API Error:', error.response?.data || error.message);
-    return Promise.reject(error);
-  }
-);
+import api from './api';
 
 export const getQuestions = async () => {
   try {
@@ -56,6 +36,16 @@ export const deleteQuestion = async (id) => {
     return res.data;
   } catch (error) {
     console.error('Error deleting question:', error);
+    throw error;
+  }
+};
+
+export const toggleQuestionState = async (id) => {
+  try {
+    const res = await api.put(`/api/questions/${id}/toggle`);
+    return res.data;
+  } catch (error) {
+    console.error('Error toggling question state:', error);
     throw error;
   }
 };

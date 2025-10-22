@@ -18,9 +18,14 @@ export default function TabLayout() {
         tabBarStyle: { 
           backgroundColor: colors.tabBarBackground, 
           borderTopWidth: 0, 
-          paddingTop: Platform.OS === 'ios' ? 15 : 10,
-          paddingBottom: Platform.OS === 'ios' ? 15 : 10, 
-          height: Platform.OS === 'ios' ? 105 : 85,
+          paddingTop: Platform.OS === 'ios' ? 15 : 12,
+          paddingBottom: Platform.OS === 'ios' ? 15 : 12, 
+          height: Platform.OS === 'ios' ? 105 : 90,
+          elevation: 8,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
         },
         tabBarLabelStyle: { display: 'none' }, // solo iconos
       }}
@@ -29,9 +34,9 @@ export default function TabLayout() {
       <Tabs.Screen
         name="home"
         options={{
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "home" : "home-outline"} size={28} color={color} />
-          ),
+        tabBarIcon: ({ color, focused }) => (
+          <Ionicons name={focused ? "home" : "home-outline"} size={30} color={color} />
+        ),
         }}
       />
 
@@ -39,9 +44,9 @@ export default function TabLayout() {
       <Tabs.Screen
         name="menu"
         options={{
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="menu" size={32} color={color} />
-          ),
+        tabBarIcon: ({ color }) => (
+          <Ionicons name="menu" size={34} color={color} />
+        ),
           tabBarButton: (props) => (
             <TouchableOpacity onPress={openMenu} style={props.style}>
               {props.children}

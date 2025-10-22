@@ -10,9 +10,11 @@ const app = express();
 app.use(bodyParser.json());
 
 app.use(cors({
-  origin: "http://localhost:3000",
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  credentials: true
+  origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  optionsSuccessStatus: 200
 }));
 
 // 🔑 Configurar Supabase con service role key (administrador)
@@ -40,6 +42,22 @@ app.get("/api/questions", async (req, res) => {
   }
 });
 
+// GET /api/questions/active -> Listar solo preguntas activas (para el bot)
+app.get("/api/questions/active", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("questions")
+      .select("*")
+      .eq("is_active", true)
+      .order("id", { ascending: true });
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error al obtener preguntas activas" });
+  }
+});
+
 // GET /api/questions/:id -> Obtener una pregunta específica
 app.get("/api/questions/:id", async (req, res) => {
   const { id } = req.params;
@@ -53,7 +71,6 @@ app.get("/api/questions/:id", async (req, res) => {
   }
 });
 
-// POST /api/questions -> Crear nueva pregunta
 // POST /api/questions -> Crear nueva pregunta
 app.post("/api/questions", async (req, res) => {
   const { category, question, answer } = req.body;
@@ -88,14 +105,47 @@ app.post("/api/questions", async (req, res) => {
 // PUT /api/questions/:id -> Editar pregunta existente
 app.put("/api/questions/:id", async (req, res) => {
   const { id } = req.params;
-  const { category, question, answer } = req.body;
+  const { category, question, answer, is_active } = req.body;
   try {
-    const { data, error } = await supabase.from("questions").update({ category, question, answer }).eq("id", id).select();
+    const updateData = { category, question, answer };
+    if (is_active !== undefined) {
+      updateData.is_active = is_active;
+    }
+    const { data, error } = await supabase.from("questions").update(updateData).eq("id", id).select();
     if (error) throw error;
     res.json(data[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Error al actualizar la pregunta" });
+  }
+});
+
+// PUT /api/questions/:id/toggle -> Activar/desactivar pregunta
+app.put("/api/questions/:id/toggle", async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Primero obtener el estado actual
+    const { data: currentData, error: fetchError } = await supabase
+      .from("questions")
+      .select("is_active")
+      .eq("id", id)
+      .single();
+    
+    if (fetchError) throw fetchError;
+    
+    // Cambiar el estado
+    const newState = !currentData.is_active;
+    const { data, error } = await supabase
+      .from("questions")
+      .update({ is_active: newState })
+      .eq("id", id)
+      .select();
+    
+    if (error) throw error;
+    res.json(data[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error al cambiar estado de la pregunta" });
   }
 });
 
@@ -117,12 +167,17 @@ app.delete("/api/questions/:id", async (req, res) => {
 // GET /api/ratings -> Listar todas las calificaciones
 app.get("/api/ratings", async (req, res) => {
   try {
+    console.log("📊 Solicitando calificaciones...");
     const { data, error } = await supabase.from("calificaciones").select("*").order("id", { ascending: false });
-    if (error) throw error;
+    if (error) {
+      console.error("❌ Error de Supabase:", error);
+      throw error;
+    }
+    console.log(`✅ Calificaciones obtenidas: ${data.length} registros`);
     res.json(data);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error al obtener calificaciones" });
+    console.error("❌ Error al obtener calificaciones:", err);
+    res.status(500).json({ error: "Error al obtener calificaciones", details: err.message });
   }
 });
 

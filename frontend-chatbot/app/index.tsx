@@ -1,23 +1,25 @@
 import { Redirect } from 'expo-router';
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from "../contexts/ThemeContext";
 import { AuthService } from "../lib/authService";
+import { SamsungInputUtils } from "../lib/inputUtils";
+import { socketService } from "../lib/socketService";
 
 interface User {
   id: string;
@@ -36,6 +38,7 @@ export default function App() {
   const [loadingLogin, setLoadingLogin] = useState(false);
   const [loadingSession, setLoadingSession] = useState(true);
   const [step, setStep] = useState<'rut' | 'success'>('rut');
+  const usuarioEnviadoRef = useRef(false);
 
   // Responsividad
   const { width, height } = Dimensions.get('window');
@@ -182,11 +185,30 @@ export default function App() {
   };
 
   const handleRutChange = (text: string) => {
-    let clean = text.replace(/[^0-9kK]/g, "").toUpperCase();
-    let body = clean.slice(0, -1);
-    let dv = clean.slice(-1);
-    body = body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-    setRut(body ? `${body}-${dv}` : dv);
+    // Protección contra duplicación en Samsung
+    if (text === rut) return;
+    
+    const formattedRut = SamsungInputUtils.formatRut(text);
+    setRut(formattedRut);
+  };
+
+  // Función protegida para enviar nuevo usuario solo una vez
+  const enviarNuevoUsuario = async (userId: string) => {
+    if (usuarioEnviadoRef.current) {
+      console.log('⚠️ Usuario ya fue enviado, evitando duplicado');
+      return;
+    }
+    
+    usuarioEnviadoRef.current = true;
+    console.log('👤 Enviando nuevo usuario...');
+    
+    const usuarioConectado = socketService.enviarNuevoUsuario({
+      usuario_id: userId
+    });
+
+    if (usuarioConectado) {
+      // Usuario conectado enviado exitosamente
+    }
   };
 
   const handleLogin = async () => {
@@ -200,9 +222,14 @@ export default function App() {
       const result = await AuthService.authenticateByRut(cleanRut);
 
       if (result.success && result.user) {
-        setUserData(result.user as User);
+        const user = result.user as User;
+        setUserData(user);
         setIsLoggedIn(true);
         setStep('success');
+        
+        // Enviar evento de nuevo usuario conectado
+        await enviarNuevoUsuario(user.id);
+        
         Alert.alert("¡Bienvenido!", "Has iniciado sesión correctamente");
       } else {
         Alert.alert("Error", result.error || "No se pudo iniciar sesión");
@@ -284,9 +311,13 @@ export default function App() {
             maxLength={12}
             autoCapitalize="none"
             autoCorrect={false}
+            autoComplete="off"
+            spellCheck={false}
             selectTextOnFocus={true}
             underlineColorAndroid="transparent"
             returnKeyType="done"
+            importantForAutofill="no"
+            textContentType="none"
           />
         </View>
 

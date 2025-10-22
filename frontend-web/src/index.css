@@ -11,3 +11,69 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* Fuente de reloj digital clásico */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+
+/* Fuente Digital-7 para reloj digital */
+@font-face {
+  font-family: 'Digital-7';
+  src: url('https://www.dafont.com/digital-7.font') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+/* Animación de reloj digital para contador */
+@keyframes slideDown {
+  0% {
+    transform: translateY(-100%) scale(0.8);
+    opacity: 0;
+  }
+  50% {
+    transform: translateY(-20%) scale(1.1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes digitalGlowDark {
+  0%, 100% {
+    text-shadow: 
+      0 0 5px rgba(255, 255, 255, 0.8), 
+      0 0 10px rgba(255, 255, 255, 0.6),
+      0 0 15px rgba(255, 255, 255, 0.4),
+      0 0 20px rgba(255, 255, 255, 0.3);
+  }
+  50% {
+    text-shadow: 
+      0 0 10px rgba(255, 255, 255, 1), 
+      0 0 20px rgba(255, 255, 255, 0.8),
+      0 0 30px rgba(255, 255, 255, 0.6),
+      0 0 40px rgba(255, 255, 255, 0.4);
+  }
+}
+
+@keyframes digitalGlowLight {
+  0%, 100% {
+    text-shadow: 
+      0 0 5px rgba(0, 0, 0, 0.8), 
+      0 0 10px rgba(0, 0, 0, 0.6),
+      0 0 15px rgba(0, 0, 0, 0.4),
+      0 0 20px rgba(0, 0, 0, 0.3);
+  }
+  50% {
+    text-shadow: 
+      0 0 10px rgba(0, 0, 0, 1), 
+      0 0 20px rgba(0, 0, 0, 0.8),
+      0 0 30px rgba(0, 0, 0, 0.6),
+      0 0 40px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* Efecto de brillo digital durante la animación */
+.digital-counter-animating {
+  /* Sin efectos de brillo adicionales */
+}
