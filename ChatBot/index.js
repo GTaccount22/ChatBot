@@ -103,7 +103,7 @@ app.post("/webhook", async (req, res) => {
         console.log("📩 Mensaje recibido de:", from, "Texto:", text);
 
         if (
-          ["hi", "hola", "menu", "opciones", "inicio", "ayuda", "hola, necesito ayuda"].includes(text.toLowerCase())
+          ["hi", "hola", "menu", "opciones", "inicio", "ayuda", "hola, necesito ayuda, volver, Volver"].includes(text.toLowerCase())
           || text.toLowerCase().includes("duco")
         ) {
           userStates.set(from, { category: null });
