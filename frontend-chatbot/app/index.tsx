@@ -1,18 +1,18 @@
 import { Redirect } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -22,12 +22,15 @@ import { SamsungInputUtils } from "../lib/inputUtils";
 import { socketService } from "../lib/socketService";
 
 interface User {
-  id: string;
-  nombre: string;
-  apellido: string;
-  email_institucional: string;
+  id: number;
+  first_name: string;
+  last_name: string;
+  institutional_email: string;
   rut: string;
-  genero: boolean;
+  gender: boolean;
+  phone: string;
+  created_at: string;
+  modality_id: number;
 }
 
 export default function App() {
@@ -38,7 +41,7 @@ export default function App() {
   const [loadingLogin, setLoadingLogin] = useState(false);
   const [loadingSession, setLoadingSession] = useState(true);
   const [step, setStep] = useState<'rut' | 'success'>('rut');
-  const usuarioEnviadoRef = useRef(false);
+  const usuariosEnviadosRef = useRef<Set<string>>(new Set());
 
   // Responsividad
   const { width, height } = Dimensions.get('window');
@@ -167,12 +170,15 @@ export default function App() {
       if (isValid && session?.user) {
         setIsLoggedIn(true);
         const user: User = {
-          id: session.user.id || '',
-          nombre: session.user.user_metadata?.nombre || '',
-          apellido: session.user.user_metadata?.apellido || '',
-          email_institucional: session.user.email || '',
+          id: session.user.id || 0,
+          first_name: session.user.user_metadata?.first_name || '',
+          last_name: session.user.user_metadata?.last_name || '',
+          institutional_email: session.user.email || '',
           rut: session.user.user_metadata?.rut || '',
-          genero: session.user.user_metadata?.genero || false
+          gender: session.user.user_metadata?.gender || false,
+          phone: session.user.user_metadata?.phone || '',
+          created_at: session.user.created_at || '',
+          modality_id: session.user.user_metadata?.modality_id || 0
         };
         setUserData(user);
         setStep('success');
@@ -192,22 +198,28 @@ export default function App() {
     setRut(formattedRut);
   };
 
-  // Función protegida para enviar nuevo usuario solo una vez
-  const enviarNuevoUsuario = async (userId: string) => {
-    if (usuarioEnviadoRef.current) {
-      console.log('⚠️ Usuario ya fue enviado, evitando duplicado');
+  // Función protegida para enviar nuevo usuario solo una vez por usuario
+  const enviarNuevoUsuario = async (userId: number) => {
+    // Verificar si este usuario específico ya fue enviado
+    if (usuariosEnviadosRef.current.has(userId.toString())) {
+      console.log(`⚠️ Usuario ${userId} ya fue enviado, evitando duplicado`);
       return;
     }
     
-    usuarioEnviadoRef.current = true;
-    console.log('👤 Enviando nuevo usuario...');
+    // Marcar este usuario como enviado
+    usuariosEnviadosRef.current.add(userId.toString());
+    console.log(`👤 Enviando nuevo usuario: ${userId}`);
     
     const usuarioConectado = socketService.enviarNuevoUsuario({
-      usuario_id: userId
+      user_id: userId
     });
 
     if (usuarioConectado) {
-      // Usuario conectado enviado exitosamente
+      console.log(`✅ Usuario ${userId} enviado exitosamente`);
+    } else {
+      console.log(`❌ Error al enviar usuario ${userId}`);
+      // Remover del set si falló para permitir reintento
+      usuariosEnviadosRef.current.delete(userId.toString());
     }
   };
 
@@ -245,11 +257,20 @@ export default function App() {
   const logout = async () => {
     setLoadingLogin(true);
     try {
+      // Obtener el ID del usuario actual antes de hacer logout
+      const currentUserId = userData?.id;
+      
       await AuthService.logout();
       setIsLoggedIn(false);
       setStep('rut');
       setRut('');
       setUserData(null);
+      
+      // Remover solo este usuario del set de usuarios enviados
+      if (currentUserId) {
+        usuariosEnviadosRef.current.delete(currentUserId.toString());
+        console.log(`🔄 Usuario ${currentUserId} removido del set de usuarios enviados`);
+      }
     } catch (error) {
       console.error("❌ Error cerrando sesión:", error);
     } finally {

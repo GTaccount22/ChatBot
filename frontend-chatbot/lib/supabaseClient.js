@@ -22,7 +22,7 @@ export const supabaseAdmin = createClient(
 
 export const testConnection = async () => {
   try {
-    const { data, error } = await supabase.from("usuario").select("*").limit(1);
+    const { data, error } = await supabase.from("User").select("*").limit(1);
     if (error) throw error;
     console.log('✅ Conexión Supabase OK:', data);
     return data;

@@ -3,12 +3,15 @@ import { supabase, supabaseAdmin } from './supabaseClient';
 
 // Interfaces de TypeScript
 interface User {
-  id: string;
-  nombre: string;
-  apellido: string;
-  email_institucional: string;
+  id: number;
+  first_name: string;
+  last_name: string;
+  institutional_email: string;
   rut: string;
-  genero: boolean;
+  gender: boolean;
+  phone: string;
+  created_at: string;
+  modality_id: number;
 }
 
 interface AuthResult {
@@ -53,8 +56,8 @@ export class AuthService {
     try {
       const cleanRut = this.normalizeRut(rut);
       const { data, error } = await supabase
-        .from('usuario')
-        .select('id, nombre, apellido, email_institucional, rut, genero')
+        .from('User')
+        .select('id, first_name, last_name, institutional_email, rut, gender, phone, created_at, modality_id')
         .eq('rut', cleanRut)
         .single();
 
@@ -81,10 +84,12 @@ export class AuthService {
         password,
         email_confirm: true,
         user_metadata: {
-          nombre: user.nombre,
-          apellido: user.apellido,
+          first_name: user.first_name,
+          last_name: user.last_name,
           rut: user.rut,
-          genero: user.genero
+          gender: user.gender,
+          phone: user.phone,
+          modality_id: user.modality_id
         }
       });
 
@@ -117,7 +122,7 @@ export class AuthService {
   // Crear sesión automática sin correo
   static async createAutomaticSession(user: User): Promise<AuthResult> {
     try {
-      console.log(`🔐 Creando sesión automática para: ${user.email_institucional}`);
+      console.log(`🔐 Creando sesión automática para: ${user.institutional_email}`);
       
       // Crear una sesión simulada con los datos del usuario
       const mockSession = {
@@ -126,12 +131,14 @@ export class AuthService {
         expires_at: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24 horas
         user: {
           id: user.id,
-          email: user.email_institucional,
+          email: user.institutional_email,
           user_metadata: {
-            nombre: user.nombre,
-            apellido: user.apellido,
+            first_name: user.first_name,
+            last_name: user.last_name,
             rut: user.rut,
-            genero: user.genero
+            gender: user.gender,
+            phone: user.phone,
+            modality_id: user.modality_id
           }
         }
       };
@@ -156,13 +163,13 @@ export class AuthService {
         console.log(`❌ Paso 1 falló: Usuario no encontrado`);
         return { success: false, error: 'Usuario no encontrado. Verifica que el RUT sea correcto.' };
       }
-      console.log(`✅ Paso 1 exitoso: Usuario encontrado: ${userResult.user.email_institucional}`);
+      console.log(`✅ Paso 1 exitoso: Usuario encontrado: ${userResult.user.institutional_email}`);
 
       const user = userResult.user;
 
       console.log(`🔍 Paso 2: Asegurando usuario en Supabase Auth`);
       // Validar o crear en Supabase Auth
-      const authUser = await this.ensureAuthUser(user.email_institucional, user);
+      const authUser = await this.ensureAuthUser(user.institutional_email, user);
       if (!authUser.success) {
         console.log(`❌ Paso 2 falló: ${authUser.error}`);
         return { success: false, error: authUser.error };
@@ -182,7 +189,7 @@ export class AuthService {
         success: true,
         message: 'Sesión iniciada correctamente',
         user,
-        email: user.email_institucional,
+        email: user.institutional_email,
         session: sessionResult.session
       };
     } catch (err) {
@@ -280,7 +287,7 @@ export class AuthService {
   // Test conexión
   static async testConnection() {
     try {
-      const { data, error } = await supabase.from("usuario").select("*").limit(1);
+      const { data, error } = await supabase.from("User").select("*").limit(1);
       return !error;
     } catch {
       return false;

@@ -1,10 +1,11 @@
 import { AuthService } from './authService';
 import { supabase } from './supabaseClient';
 
-export interface TutorialEstado {
-  user_id: string;
-  visto: boolean;
-  fecha?: string;
+export interface TutorialStatus {
+  id: number;
+  user_id: number;
+  seen: boolean;
+  date: string;
 }
 
 export class TutorialService {
@@ -16,28 +17,32 @@ export class TutorialService {
       const sessionData = await AuthService.loadSession();
       
       if (!sessionData?.user) {
+        console.log('❌ No hay sesión de usuario');
         return false;
       }
 
       const userId = sessionData.user.id;
+      console.log('🔍 Verificando tutorial para usuario:', userId);
 
       const { data, error } = await supabase
-        .from('tutorial_estado')
-        .select('visto')
+        .from('Tutorial_status')
+        .select('seen')
         .eq('user_id', userId)
-        .eq('visto', true)
+        .eq('seen', true)
         .limit(1);
 
       if (error) {
-        console.error('Error checking tutorial status:', error);
+        console.error('❌ Error checking tutorial status:', error);
         return false;
       }
 
-      // Si hay al menos un registro con visto=true, el tutorial ya fue visto
+      console.log('📊 Datos de tutorial:', data);
+      // Si hay al menos un registro con seen=true, el tutorial ya fue visto
       const hasSeen = data && data.length > 0;
+      console.log('✅ Tutorial visto:', hasSeen);
       return hasSeen;
     } catch (error) {
-      console.error('Error in hasSeenTutorial:', error);
+      console.error('❌ Error in hasSeenTutorial:', error);
       return false;
     }
   }
@@ -57,20 +62,20 @@ export class TutorialService {
 
       // Primero intentar insertar
       const { error: insertError } = await supabase
-        .from('tutorial_estado')
+        .from('Tutorial_status')
         .insert({
           user_id: userId,
-          visto: true,
-          fecha: new Date().toISOString()
+          seen: true,
+          date: new Date().toISOString()
         });
 
       // Si falla por duplicado, hacer update
       if (insertError && insertError.code === '23505') {
         const { error: updateError } = await supabase
-          .from('tutorial_estado')
+          .from('Tutorial_status')
           .update({
-            visto: true,
-            fecha: new Date().toISOString()
+            seen: true,
+            date: new Date().toISOString()
           })
           .eq('user_id', userId);
 
@@ -104,11 +109,11 @@ export class TutorialService {
       const userId = sessionData.user.id;
 
       const { error } = await supabase
-        .from('tutorial_estado')
+        .from('Tutorial_status')
         .upsert({
           user_id: userId,
-          visto: false,
-          fecha: new Date().toISOString()
+          seen: false,
+          date: new Date().toISOString()
         }, {
           onConflict: 'user_id'
         });

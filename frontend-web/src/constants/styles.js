@@ -116,21 +116,7 @@ export const SELECT_MENU_PROPS = {
       borderRadius: '8px',
       boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
       scrollbarWidth: 'thin',
-      scrollbarColor: '#475569 #f1f1f1',
-      '&::-webkit-scrollbar': {
-        width: '6px'
-      },
-      '&::-webkit-scrollbar-track': {
-        background: '#302E40',
-        borderRadius: '3px'
-      },
-      '&::-webkit-scrollbar-thumb': {
-        background: '#475569',
-        borderRadius: '3px'
-      },
-      '&::-webkit-scrollbar-thumb:hover': {
-        background: '#334155'
-      }
+      scrollbarColor: '#475569 #f1f1f1'
     }
   }
 };

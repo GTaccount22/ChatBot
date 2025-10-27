@@ -1,22 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    Alert,
-    Animated,
-    Dimensions,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View
+  Alert,
+  Animated,
+  Dimensions,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View
 } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { AuthService } from '../lib/authService';
 import { EvaluationData, EvaluationService } from '../lib/evaluationService';
 import { SamsungInputUtils, useProtectedInput } from '../lib/inputUtils';
+import { Modality, ModalityService } from '../lib/modalityService';
 import { socketService } from '../lib/socketService';
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get('window');
@@ -35,7 +36,8 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
   const scrollViewRef = useRef<ScrollView>(null);
   
   // Estados del formulario
-  const [studyModality, setStudyModality] = useState<'sede' | 'online' | null>(null);
+  const [modalities, setModalities] = useState<Modality[]>([]);
+  const [loadingModalities, setLoadingModalities] = useState(false);
   const [email, setEmail] = useState('');
   const [comments, setComments] = useState('');
   const [satisfaction, setSatisfaction] = useState<number | null>(null);
@@ -74,14 +76,50 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
     try {
       const sessionData = await AuthService.loadSession();
       if (sessionData?.user) {
-        const userData = sessionData.user.user_metadata || sessionData.user;
+        const userData = {
+          ...(sessionData.user.user_metadata || sessionData.user),
+          id: sessionData.user.id // Asegurar que tenemos el ID real
+        };
         setCurrentUser(userData);
+        console.log('👤 Usuario cargado:', userData);
         // Obtener el correo del usuario autenticado
-        const userEmail = sessionData.user.email || userData.email_institucional || '';
+        const userEmail = sessionData.user.email || userData.institutional_email || '';
         setEmail(userEmail);
       }
+      
+      // Cargar modalidades de la BD
+      await loadModalities();
     } catch (error) {
       // Error silencioso para mejor UX
+      console.error('Error cargando datos de usuario:', error);
+    }
+  };
+
+  const loadModalities = async () => {
+    try {
+      setLoadingModalities(true);
+      const result = await ModalityService.getModalities();
+      
+      if (result.success && result.data) {
+        setModalities(result.data);
+        console.log('✅ Modalidades cargadas:', result.data);
+      } else {
+        console.error('❌ Error cargando modalidades:', result.error);
+        // Fallback a modalidades hardcodeadas si falla la BD
+        setModalities([
+          { id_modality: 1, type: 'Sede' },
+          { id_modality: 2, type: '100% Online' }
+        ]);
+      }
+    } catch (error) {
+      console.error('❌ Error inesperado cargando modalidades:', error);
+      // Fallback a modalidades hardcodeadas
+      setModalities([
+        { id_modality: 1, type: 'Sede' },
+        { id_modality: 2, type: '100% Online' }
+      ]);
+    } finally {
+      setLoadingModalities(false);
     }
   };
 
@@ -101,9 +139,15 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
   };
 
   const handleSubmit = async () => {
-    // Validar campos obligatorios
-    if (!studyModality || !email || !satisfaction) {
+    // Validar campos obligatorios (ya no necesitamos studyModality)
+    if (!email || !satisfaction) {
       Alert.alert('Error', 'Por favor completa todos los campos obligatorios');
+      return;
+    }
+    
+    // Validar que el usuario tenga una modalidad asignada
+    if (!currentUser?.modality_id) {
+      Alert.alert('Error', 'No tienes una modalidad de estudio asignada');
       return;
     }
 
@@ -117,13 +161,20 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
     setIsSubmitting(true);
 
     try {
+      // Obtener la modalidad del usuario desde la BD
+      const userModality = modalities.find(m => m.id_modality === currentUser.modality_id);
+      
       const evaluationData: EvaluationData = {
-        nombre: currentUser ? `${currentUser.nombre} ${currentUser.apellido}` : 'Usuario',
+        nombre: currentUser ? `${currentUser.first_name || currentUser.nombre} ${currentUser.last_name || currentUser.apellido}` : 'Usuario',
         correo: email,
-        modalidad: studyModality === 'sede' ? 'Sede' : '100% Online',
+        modalidad: (userModality?.type || 'Sede') as 'Sede' | '100% Online',
         calificacion: satisfaction,
         comentario: comments.trim() || undefined
       };
+
+      console.log('👤 Modalidad del usuario:', currentUser.modality_id);
+      console.log('📊 Modalidad encontrada:', userModality);
+      console.log('📊 Datos de evaluación:', evaluationData);
 
       const result = await EvaluationService.submitEvaluation(evaluationData);
       console.log('📊 Resultado del envío:', result);
@@ -137,14 +188,13 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
           minute: '2-digit' 
         });
         
+        console.log('👤 currentUser.id:', currentUser?.id);
+        
         const calificacionEnviada = socketService.enviarNuevaCalificacion({
-          nombre: currentUser?.nombre || 'Usuario',
-          calificacion: satisfaction,
-          comentario: comments.trim() || undefined,
-          fecha: fecha,
-          hora: hora,
-          modalidad: studyModality === 'sede' ? 'Sede' : '100% Online',
-          email: email.trim() || currentUser?.email_institucional || ''
+          user_id: currentUser?.id || 0,
+          score: satisfaction,
+          comment: comments.trim() || undefined,
+          date: new Date().toISOString()
         });
 
         if (calificacionEnviada) {
@@ -156,7 +206,6 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
           'Tu evaluación ha sido enviada exitosamente. Tu opinión es muy importante para nosotros.',
           [{ text: 'OK', onPress: () => {
             // Limpiar formulario
-            setStudyModality(null);
             setEmail('');
             setComments('');
             setSatisfaction(null);
@@ -171,6 +220,10 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
       Alert.alert('Error', 'Ocurrió un error inesperado. Inténtalo de nuevo.');
     } finally {
       setIsSubmitting(false);
+      // Limpiar formulario
+      setEmail('');
+      setComments('');
+      setSatisfaction(null);
     }
   };
 
@@ -277,6 +330,22 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
     submitButton: { backgroundColor: colors.primary, paddingVertical: 15, borderRadius: 8, alignItems: 'center', marginTop: 20 },
     submitButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
     asterisk: { color: '#FF3B30' },
+    modalityDisplay: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      padding: 15,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      marginTop: 10,
+    },
+    modalityText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text,
+      marginLeft: 10,
+    },
   });
 
   return (
@@ -305,39 +374,27 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
                 </Text>
                 <Text style={styles.requiredText}>* Obligatorio</Text>
 
-                {/* Pregunta 1: Modalidad de estudio */}
+                {/* Información de Modalidad */}
+                {currentUser?.modality_id && (
+                  <View style={styles.questionContainer}>
+                    <View style={styles.questionHeader}>
+                      <Text style={styles.questionNumber}>📚</Text>
+                      <Text style={styles.questionText}>Tu modalidad de estudio</Text>
+                    </View>
+                    
+                    <View style={styles.modalityDisplay}>
+                      <Ionicons name="school-outline" size={20} color={colors.primary} />
+                      <Text style={styles.modalityText}>
+                        {modalities.find(m => m.id_modality === currentUser.modality_id)?.type || 'Sin modalidad'}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Pregunta 1: Email */}
                 <View style={styles.questionContainer}>
                   <View style={styles.questionHeader}>
                     <Text style={styles.questionNumber}>1.</Text>
-                    <Text style={styles.questionText}>¿Cuál es tu modalidad de estudio?</Text>
-                    <Ionicons name="create-outline" size={20} color={colors.primary} style={styles.editIcon} />
-                  </View>
-                  
-                  <TouchableOpacity 
-                    style={styles.radioContainer} 
-                    onPress={() => setStudyModality('sede')}
-                  >
-                    <View style={[styles.radioButton, { borderColor: colors.border }]}>
-                      {studyModality === 'sede' && <View style={[styles.radioSelected, { backgroundColor: colors.primary }]} />}
-                    </View>
-                    <Text style={styles.radioText}>Sede</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.radioContainer} 
-                    onPress={() => setStudyModality('online')}
-                  >
-                    <View style={[styles.radioButton, { borderColor: colors.border }]}>
-                      {studyModality === 'online' && <View style={[styles.radioSelected, { backgroundColor: colors.primary }]} />}
-                    </View>
-                    <Text style={styles.radioText}>100% online</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Pregunta 2: Email */}
-                <View style={styles.questionContainer}>
-                  <View style={styles.questionHeader}>
-                    <Text style={styles.questionNumber}>2.</Text>
                     <Text style={styles.questionText}>¿Cuál es tu correo Duoc UC?</Text>
                     <Text style={styles.asterisk}>*</Text>
                   </View>
@@ -363,10 +420,10 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
                   />
                 </View>
 
-                {/* Pregunta 3: Comentarios */}
+                {/* Pregunta 2: Comentarios */}
                 <View style={styles.questionContainer}>
                   <View style={styles.questionHeader}>
-                    <Text style={styles.questionNumber}>3.</Text>
+                    <Text style={styles.questionNumber}>2.</Text>
                     <Text style={styles.questionText}>¿Quieres dejarnos comentarios o sugerencias?</Text>
                   </View>
                   
@@ -383,10 +440,10 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
                   />
                 </View>
 
-                {/* Pregunta 4: Satisfacción */}
+                {/* Pregunta 3: Satisfacción */}
                 <View style={styles.questionContainer}>
                   <View style={styles.questionHeader}>
-                    <Text style={styles.questionNumber}>4.</Text>
+                    <Text style={styles.questionNumber}>3.</Text>
                     <Text style={styles.questionText}>¿Qué tan satisfecho estás con Nuestra App Duco?</Text>
                   </View>
                   

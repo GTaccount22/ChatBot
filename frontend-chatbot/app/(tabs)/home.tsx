@@ -19,9 +19,9 @@ import { TutorialService } from "../../lib/tutorialService";
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 type Usuario = {
-  nombre: string;
-  apellido: string;
-  genero: boolean;
+  first_name: string;
+  last_name: string;
+  gender: boolean;
 };
 
 interface TutorialStep {
@@ -65,9 +65,9 @@ function HomeScreen() {
     const sessionData = await AuthService.loadSession();
     if (sessionData?.user) {
       socketService.enviarTutorialCompletado({
-        usuario_id: sessionData.user.id,
-        fecha_completado: new Date().toISOString(),
-        es_primer_tutorial: true
+        user_id: sessionData.user.id,
+        date: new Date().toISOString(),
+        is_first_tutorial: true
       });
     }
   };
@@ -92,20 +92,33 @@ function HomeScreen() {
   useEffect(() => {
     const checkTutorialStatus = async () => {
       try {
+        console.log('🔍 Verificando estado del tutorial...');
         const seen = await TutorialService.hasSeenTutorial();
+        console.log('📊 Tutorial visto:', seen);
+        
         if (!seen) {
+          console.log('🎓 Usuario nuevo - iniciando tutorial automático');
           setIsManualTutorial(false); // Marcar como automático
           InteractionManager.runAfterInteractions(() => {
             startTutorial();
           });
+        } else {
+          console.log('✅ Usuario ya vio el tutorial - no iniciando');
         }
       } catch (error) {
-        console.error('Error checking tutorial:', error);
+        console.error('❌ Error checking tutorial:', error);
       }
     };
     // Solo verificar tutorial automático si NO es manual Y no está visible
     if (!loading && !isManualTutorial && !isTutorialVisible) {
+      console.log('🚀 Condiciones cumplidas - verificando tutorial');
       checkTutorialStatus();
+    } else {
+      console.log('⏸️ Condiciones no cumplidas:', {
+        loading,
+        isManualTutorial,
+        isTutorialVisible
+      });
     }
   }, [loading, startTutorial, setIsManualTutorial, isManualTutorial, isTutorialVisible]);
 
@@ -166,8 +179,8 @@ function HomeScreen() {
     }
   };
 
-  const nombreUsuario = currentUser?.nombre || "Usuario";
-  const apellidoUsuario = currentUser?.apellido || "";
+  const nombreUsuario = currentUser?.first_name || "Usuario";
+  const apellidoUsuario = currentUser?.last_name || "";
   
   // Generar iniciales del usuario
   const getInitials = (nombre: string, apellido: string) => {

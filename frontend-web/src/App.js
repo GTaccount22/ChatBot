@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { getQuestions, createQuestion, updateQuestion, deleteQuestion, toggleQuestionState } from "./services/questionService";
 import { getRatings } from "./services/ratingService";
+import { getCategories, createCategory, updateCategory, deleteCategory } from "./services/categoryService";
 import { io } from "socket.io-client";
 import { COLOR_PALETTES, COMMON_STYLES, SELECT_MENU_PROPS } from "./constants/styles";
 import {
@@ -29,6 +30,7 @@ import {
   Chip,
   Card,
   CardContent,
+  Divider,
   Drawer,
   List,
   ListItem,
@@ -48,6 +50,7 @@ import CategoryIcon from "@mui/icons-material/Category";
 import QuestionAnswerIcon from "@mui/icons-material/QuestionAnswer";
 import HomeIcon from "@mui/icons-material/Home";
 import GradeIcon from "@mui/icons-material/Grade";
+import MenuIcon from "@mui/icons-material/Menu";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
 
@@ -56,7 +59,7 @@ function App() {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   
   // Sidebar state
-  const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
+  const [sidebarOpen, setSidebarOpen] = useState(!isMobile); // Abrir en desktop, cerrar en móvil
   const [activeTab, setActiveTab] = useState('home');
   
   // Admin panel state
@@ -70,6 +73,7 @@ function App() {
   const [editingId, setEditingId] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
+  const [categoryManagementOpen, setCategoryManagementOpen] = useState(false);
   const [selectedFilterCategory, setSelectedFilterCategory] = useState("");
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedMode = localStorage.getItem('darkMode');
@@ -78,7 +82,7 @@ function App() {
   
   // Estados para Socket.IO y datos históricos
   const [socket, setSocket] = useState(null);
-  const [historicalData, setHistoricalData] = useState(null);
+  const [historicalData, setHistoricalData] = useState({});
   const [socketConnected, setSocketConnected] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   
@@ -89,23 +93,45 @@ function App() {
 
   const colors = isDarkMode ? COLOR_PALETTES.dark : COLOR_PALETTES.light;
 
+  // Función para probar si ngrok está disponible
+  const testNgrokConnection = async () => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      
+      const response = await fetch('https://exilic-unconditionally-channing.ngrok-free.dev/api/usuarios-por-dia', {
+        method: 'HEAD',
+        signal: controller.signal,
+        headers: {
+          'ngrok-skip-browser-warning': 'true'
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      return response.ok;
+    } catch (error) {
+      return false;
+    }
+  };
+
   useEffect(() => {
     loadQuestions();
+    loadRatings(true); // Cargar calificaciones solo una vez al inicio
+    loadCategories(); // Cargar categorías al inicio
   }, []);
 
   useEffect(() => {
     localStorage.setItem('darkMode', JSON.stringify(isDarkMode));
   }, [isDarkMode]);
 
-  // Inicializar estados de preguntas cuando se cargan
+  // Inicializar estados de preguntas cuando se cargan - SIMPLIFICADO
   useEffect(() => {
     if (questions.length > 0) {
       const initialStates = {};
       questions.forEach(q => {
-        // Usar el campo is_active del backend, o true por defecto si no existe
         initialStates[q.id] = q.is_active !== undefined ? q.is_active : true;
       });
-      setQuestionStates(prev => ({ ...prev, ...initialStates }));
+      setQuestionStates(initialStates);
     }
   }, [questions]);
 
@@ -113,111 +139,164 @@ function App() {
     try {
     const data = await getQuestions();
     setQuestions(data);
-    const uniqueCategories = [...new Set(data.map(q => q.category))];
-    setCategories(uniqueCategories);
+    // Las categorías se cargan por separado con loadCategories()
   } catch (error) {
     console.error('Error loading questions:', error);
   }
   };
 
-  const loadRatings = useCallback(async () => {
+  // Función helper para obtener el nombre de la categoría
+  const getCategoryName = (categoryId) => {
+    const category = categories.find(cat => cat.id === categoryId);
+    return category ? category.name_category : 'Sin categoría';
+  };
+
+  const loadRatings = useCallback(async (showLoading = false) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       const data = await getRatings();
       setRatings(data);
     } catch (error) {
       console.error('Error loading ratings:', error);
+      setRatings([]);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }, []);
 
-  // Inicializar Socket.IO y obtener datos históricos
+  // Funciones para gestionar categorías
+  const loadCategories = async () => {
+    try {
+      const data = await getCategories();
+      setCategories(data);
+    } catch (error) {
+      console.error('Error loading categories:', error);
+    }
+  };
+
+  const handleCreateCategory = async () => {
+    if (!newCategory.trim()) return;
+    
+    try {
+      await createCategory({ name_category: newCategory.trim() });
+      setNewCategory("");
+      await loadCategories(); // Recargar categorías
+      await loadQuestions(); // Recargar preguntas para actualizar el dropdown
+      alert(`Categoría "${newCategory.trim()}" creada exitosamente!`);
+    } catch (error) {
+      console.error('Error creating category:', error);
+      
+      // Si la categoría ya existe, mostrar mensaje específico
+      if (error.response?.status === 500 && error.response?.data?.details?.includes('duplicate key')) {
+        alert(`La categoría "${newCategory.trim()}" ya existe.`);
+      } else {
+        alert('Error al crear la categoría. Intenta con otro nombre.');
+      }
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId) => {
+    try {
+      await deleteCategory(categoryId);
+      await loadCategories();
+      await loadQuestions();
+    } catch (error) {
+      console.error('Error deleting category:', error);
+    }
+  };
+
+  // Inicializar Socket.IO con detección automática de ngrok
   useEffect(() => {
-    // Conectar al servidor Socket.IO
-    const newSocket = io('http://localhost:3001');
-    setSocket(newSocket);
+    let mounted = true;
+    
+    const initializeSocket = async () => {
+      try {
+        // Probar ngrok primero
+        const isNgrokAvailable = await testNgrokConnection();
+        const socketUrl = 'http://localhost:5000';
+        
+        console.log(`🔄 Conectando Socket.IO a: ${socketUrl}`);
+        
+        const newSocket = io(socketUrl, {
+          transports: ["websocket"],
+          timeout: 10000,
+          reconnection: true,
+          reconnectionAttempts: 3,
+          reconnectionDelay: 2000,
+          extraHeaders: isNgrokAvailable ? {
+            'ngrok-skip-browser-warning': 'true'
+          } : {}
+        });
+        
+        if (!mounted) return;
+        
+        setSocket(newSocket);
 
-    // Eventos de conexión
-    newSocket.on('connect', () => {
-      console.log('✅ Conectado a Socket.IO');
-      setSocketConnected(true);
-    });
+        // Eventos de conexión
+        newSocket.on('connect', () => {
+          console.log('✅ Conectado a Socket.IO');
+          if (mounted) setSocketConnected(true);
+        });
 
-    newSocket.on('disconnect', () => {
-      console.log('❌ Desconectado de Socket.IO');
-      setSocketConnected(false);
-    });
+        newSocket.on('disconnect', () => {
+          console.log('❌ Desconectado de Socket.IO');
+          if (mounted) setSocketConnected(false);
+        });
 
-    newSocket.on('connect_error', (error) => {
-      console.error('❌ Error de conexión Socket.IO:', error);
-      setSocketConnected(false);
-    });
+        newSocket.on('connect_error', (error) => {
+          console.error('❌ Error de conexión Socket.IO:', error);
+          if (mounted) setSocketConnected(false);
+        });
 
-    // Escuchar eventos del servidor
-    newSocket.on('actualizar_conteo', ({ fecha, total }) => {
-      console.log('📊 Conteo actualizado:', { fecha, total });
-      console.log('📊 Datos históricos antes:', historicalData);
-      
-      // Activar animación
-      console.log('🎬 Activando animación de contador...');
-      setIsAnimating(true);
-      
-      // Actualizar directamente el estado sin hacer fetch
-      setHistoricalData(prev => {
-        const newData = { ...prev, [fecha]: total };
-        console.log('📊 Datos históricos después:', newData);
-        return newData;
-      });
-      
-      
-      // Desactivar animación después de un tiempo
-      setTimeout(() => {
-        console.log('🎬 Desactivando animación de contador...');
-        setIsAnimating(false);
-      }, 1000);
-    });
+        // Eventos del servidor
+        newSocket.on('actualizar_conteo', ({ fecha, total }) => {
+          console.log('📊 Conteo actualizado:', { fecha, total });
+          if (mounted) {
+            setIsAnimating(true);
+            setHistoricalData(prev => ({ ...prev, [fecha]: total }));
+            setTimeout(() => {
+              if (mounted) setIsAnimating(false);
+            }, 1000);
+          }
+        });
 
-    newSocket.on('actualizar_calificaciones', (data) => {
-      console.log('⭐ Nueva calificación recibida:', data);
-      // Recargar las calificaciones automáticamente
-      loadRatings();
-    });
+        newSocket.on('actualizar_calificaciones', (data) => {
+          console.log('⭐ Nueva calificación recibida:', data);
+          if (mounted) loadRatings();
+        });
 
-    // Escuchar cuando se complete un tutorial
-    newSocket.on('tutorial_completado', (data) => {
-      console.log('🎓 Tutorial completado:', data);
-      console.log('🎓 Timestamp:', new Date().toISOString());
-      // El contador se actualizará automáticamente cuando llegue 'actualizar_conteo'
-    });
+        // Cargar datos históricos
+        try {
+          const response = await fetch(`${socketUrl}/api/usuarios-por-dia`);
+          
+          if (response.ok && mounted) {
+            const data = await response.json();
+            setHistoricalData(data);
+          }
+        } catch (error) {
+          console.error('Error cargando datos históricos:', error);
+        }
 
-    // Escuchar cuando se reinicien los contadores
-    newSocket.on('contadores_reiniciados', (data) => {
-      console.log('🔄 Contadores reiniciados:', data);
-      // Limpiar datos históricos
-      setHistoricalData({});
-    });
-
-    // Consultar datos históricos
-    fetch('http://localhost:3001/api/usuarios-por-dia')
-      .then(res => res.json())
-      .then(data => {
-        console.log('📊 Datos históricos:', data);
-        setHistoricalData(data);
-      })
-      .catch(error => {
-        console.error('❌ Error obteniendo datos históricos:', error);
-      });
-
-    // Cleanup al desmontar
-    return () => {
-      newSocket.off('actualizar_conteo');
-      newSocket.off('actualizar_calificaciones');
-      newSocket.off('tutorial_completado');
-      newSocket.off('contadores_reiniciados');
-      newSocket.close();
+      } catch (error) {
+        console.error('Error inicializando Socket.IO:', error);
+        if (mounted) setSocketConnected(false);
+      }
     };
-  }, [loadRatings]);
+
+    initializeSocket();
+
+    // Cleanup
+    return () => {
+      mounted = false;
+      if (socket) {
+        socket.close();
+      }
+    };
+  }, []); // Solo ejecutar una vez al montar
 
   const handleSubmit = async () => {
     const catToSend = category === "__new__" ? newCategory : category;
@@ -227,11 +306,55 @@ function App() {
       return;
     }
 
+    // Encontrar el ID de la categoría
+    let categoryId;
+    if (category === "__new__") {
+      // Si es una nueva categoría, crear primero la categoría
+      try {
+        const newCategoryData = await createCategory({ name_category: newCategory.trim() });
+        categoryId = newCategoryData.id;
+      } catch (error) {
+        console.error('Error creating category:', error);
+        
+        // Si la categoría ya existe, informar y no continuar
+        if (error.response?.status === 500 && error.response?.data?.details?.includes('duplicate key')) {
+          alert(`La categoría "${newCategory.trim()}" ya existe. Por favor selecciona una categoría existente o usa un nombre diferente.`);
+          // Limpiar campos automáticamente
+          setCategory("");
+          setNewCategory("");
+          setQuestionText("");
+          setAnswer("");
+          return;
+        } else {
+          alert('Error al crear la categoría. Intenta con otro nombre.');
+          // Limpiar campos automáticamente
+          setCategory("");
+          setNewCategory("");
+          setQuestionText("");
+          setAnswer("");
+          return;
+        }
+      }
+    } else {
+      // Buscar el ID de la categoría existente
+      const foundCategory = categories.find(cat => cat.name_category === catToSend);
+      if (!foundCategory) {
+        alert('Categoría no encontrada');
+        // Limpiar campos automáticamente
+        setCategory("");
+        setNewCategory("");
+        setQuestionText("");
+        setAnswer("");
+        return;
+      }
+      categoryId = foundCategory.id;
+    }
+
     if (editingId) {
-      await updateQuestion(editingId, { category: catToSend, question: questionText, answer });
+      await updateQuestion(editingId, { category_id: categoryId, question: questionText, answer });
       setEditingId(null);
     } else {
-      await createQuestion({ category: catToSend, question: questionText, answer });
+      await createQuestion({ category_id: categoryId, question: questionText, answer });
     }
 
     setCategory("");
@@ -239,12 +362,20 @@ function App() {
     setQuestionText("");
     setAnswer("");
     loadQuestions();
+    loadCategories(); // Recargar categorías por si se creó una nueva
   };
 
   const handleEdit = (q) => {
     setEditingId(q.id);
-    setCategory(categories.includes(q.category) ? q.category : "__new__");
-    setNewCategory(categories.includes(q.category) ? "" : q.category);
+    // Buscar la categoría por ID en la lista de categorías
+    const foundCategory = categories.find(cat => cat.id === q.category_id);
+    if (foundCategory) {
+      setCategory(foundCategory.name_category);
+      setNewCategory("");
+    } else {
+      setCategory("__new__");
+      setNewCategory("Sin categoría");
+    }
     setQuestionText(q.question);
     setAnswer(q.answer);
   };
@@ -253,6 +384,16 @@ function App() {
     await deleteQuestion(id);
     loadQuestions();
     setDeleteDialogOpen(false);
+    
+    // Limpiar el formulario si se estaba editando la pregunta eliminada
+    if (editingId === id) {
+      console.log('Limpiando formulario después de eliminar pregunta:', id);
+      setEditingId(null);
+      setCategory("");
+      setNewCategory("");
+      setQuestionText("");
+      setAnswer("");
+    }
   };
 
   const confirmDelete = (id) => {
@@ -261,26 +402,14 @@ function App() {
   };
 
   const handleToggleQuestionState = async (questionId) => {
-    console.log('Toggle question state for ID:', questionId);
-    console.log('Current state:', questionStates[questionId]);
-    
     try {
-      // Llamar al backend para cambiar el estado
       const updatedQuestion = await toggleQuestionState(questionId);
-      console.log('Updated question from backend:', updatedQuestion);
-      
-      // Actualizar el estado local
-      setQuestionStates(prev => {
-        const newState = {
-          ...prev,
-          [questionId]: updatedQuestion.is_active
-        };
-        console.log('New state:', newState);
-        return newState;
-      });
+      setQuestionStates(prev => ({
+        ...prev,
+        [questionId]: updatedQuestion.is_active
+      }));
     } catch (error) {
       console.error('Error toggling question state:', error);
-      // En caso de error, revertir el cambio local
       alert('Error al cambiar el estado de la pregunta');
     }
   };
@@ -291,7 +420,7 @@ function App() {
     return text.charAt(0).toUpperCase() + text.slice(1);
   };
 
-  const drawerWidth = 280;
+  const drawerWidth = isMobile ? 280 : 280;
 
   const menuItems = [
     { id: 'home', label: 'Gestor de Preguntas y Respuestas', icon: <HomeIcon /> },
@@ -303,6 +432,7 @@ function App() {
       case 'home':
         return <AdminPanel 
           questions={questions}
+          categories={categories}
           category={category}
           setCategory={setCategory}
           newCategory={newCategory}
@@ -324,10 +454,15 @@ function App() {
           handleDelete={handleDelete}
           confirmDelete={confirmDelete}
           loadQuestions={loadQuestions}
+          handleCreateCategory={handleCreateCategory}
+          handleDeleteCategory={handleDeleteCategory}
+          categoryManagementOpen={categoryManagementOpen}
+          setCategoryManagementOpen={setCategoryManagementOpen}
           colors={colors}
           questionStates={questionStates}
           handleToggleQuestionState={handleToggleQuestionState}
           capitalizeFirstLetter={capitalizeFirstLetter}
+          getCategoryName={getCategoryName}
         />;
       case 'ratings':
         return <RatingsTab 
@@ -364,7 +499,15 @@ function App() {
           handleDelete={handleDelete}
           confirmDelete={confirmDelete}
           loadQuestions={loadQuestions}
+          handleCreateCategory={handleCreateCategory}
+          handleDeleteCategory={handleDeleteCategory}
+          categoryManagementOpen={categoryManagementOpen}
+          setCategoryManagementOpen={setCategoryManagementOpen}
           colors={colors}
+          questionStates={questionStates}
+          handleToggleQuestionState={handleToggleQuestionState}
+          capitalizeFirstLetter={capitalizeFirstLetter}
+          getCategoryName={getCategoryName}
         />;
     }
   };
@@ -391,13 +534,13 @@ function App() {
           },
         }}
       >
-        <Box sx={{ p: 3, textAlign: 'center', borderBottom: `1px solid ${colors.borderColor}` }}>
+        <Box sx={{ p: { xs: 2, md: 3 }, textAlign: 'center', borderBottom: `1px solid ${colors.borderColor}` }}>
           <Typography
             variant="h5"
             sx={{
               fontWeight: 700,
               color: colors.textPrimary,
-              fontSize: '1.5rem',
+              fontSize: { xs: '1.2rem', md: '1.5rem' },
               letterSpacing: '0.05em',
               fontFamily: "'Playfair Display', serif"
             }}
@@ -409,7 +552,7 @@ function App() {
             sx={{
               color: colors.textSecondary,
               mt: 1,
-              fontSize: '0.9rem'
+              fontSize: { xs: '0.8rem', md: '0.9rem' }
             }}
           >
             Sistema de Gestión
@@ -451,7 +594,7 @@ function App() {
                     '& .MuiListItemText-primary': {
                       color: activeTab === item.id ? colors.textPrimary : colors.textSecondary,
                       fontWeight: activeTab === item.id ? 600 : 400,
-                      fontSize: '0.95rem',
+                      fontSize: { xs: '0.85rem', md: '0.95rem' },
                     },
                   }}
                 />
@@ -508,8 +651,8 @@ function App() {
         {/* Indicador de conexión Socket.IO */}
         <Box sx={{ p: 2, borderTop: `1px solid ${colors.borderColor}` }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-    <Box
-      sx={{
+            <Box
+              sx={{
                 width: 8,
                 height: 8,
                 borderRadius: '50%',
@@ -527,10 +670,11 @@ function App() {
               fontSize: '0.8rem',
               fontWeight: 500
             }}>
-              Sincronización activa: {socketConnected ? 'Conectado' : 'Desconectado'}
+              Sincronización: {socketConnected ? 'Conectado' : 'Desconectado'}
             </Typography>
           </Box>
         </Box>
+        
       </Drawer>
 
       {/* Main Content */}
@@ -538,14 +682,81 @@ function App() {
         component="main"
       sx={{
           flexGrow: 1,
-          width: { md: `calc(100% - ${drawerWidth}px)` },
+          width: { xs: '100%', md: `calc(100% - ${drawerWidth}px)` },
           minHeight: '100vh',
           background: colors.background,
         }}
       >
+        {/* Botón hamburguesa para móvil */}
+        {isMobile && !sidebarOpen && (
+          <Box sx={{ 
+            position: 'fixed', 
+            top: 0, 
+            left: 0, 
+            right: 0,
+            zIndex: 1300,
+            backgroundColor: colors.cardBackground,
+            borderBottom: `1px solid ${colors.borderColor}`,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            p: 1
+          }}>
+            <IconButton
+              onClick={() => setSidebarOpen(true)}
+              sx={{
+                color: colors.textPrimary,
+                p: 1,
+                '&:hover': {
+                  backgroundColor: `${colors.buttonColor}20`,
+                  transform: 'scale(1.05)'
+                },
+                transition: 'all 0.3s ease'
+              }}
+            >
+              <MenuIcon sx={{ fontSize: 28 }} />
+            </IconButton>
+            <Typography 
+              variant="h6" 
+              sx={{ 
+                color: colors.textPrimary, 
+                fontWeight: 600,
+                ml: 1,
+                fontSize: '1.1rem'
+              }}
+            >
+              Panel Admin
+            </Typography>
+            <Box sx={{ 
+              ml: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1
+            }}>
+              <Box sx={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                backgroundColor: socketConnected ? '#4CAF50' : '#F44336',
+                animation: socketConnected ? 'pulse 2s infinite' : 'none'
+              }} />
+              <Typography sx={{ 
+                color: colors.textSecondary,
+                fontSize: '0.8rem',
+                fontWeight: 500
+              }}>
+                {socketConnected ? 'Conectado' : 'Desconectado'}
+              </Typography>
+            </Box>
+          </Box>
+        )}
         
-        
-        <Container maxWidth="xl" sx={{ py: 4, px: { xs: 2, md: 4 } }}>
+        <Container maxWidth="xl" sx={{ 
+          py: { xs: 2, md: 4 }, 
+          px: { xs: 1, sm: 2, md: 4 },
+          pt: { xs: isMobile && !sidebarOpen ? 8 : 2, md: 4 }
+        }}>
           {renderContent()}
         </Container>
       </Box>
@@ -556,6 +767,7 @@ function App() {
 // Admin Panel Component
 function AdminPanel({
   questions,
+  categories,
   category,
   setCategory,
   newCategory,
@@ -577,23 +789,26 @@ function AdminPanel({
   handleDelete,
   confirmDelete,
   loadQuestions,
+  handleCreateCategory,
+  handleDeleteCategory,
+  categoryManagementOpen,
+  setCategoryManagementOpen,
   colors,
   questionStates,
   handleToggleQuestionState,
-  capitalizeFirstLetter
+  capitalizeFirstLetter,
+  getCategoryName
 }) {
-  const categories = [...new Set(questions.map((q) => q.category))];
-  
   // Filtrar preguntas por categoría seleccionada
   const filteredQuestions = selectedFilterCategory && selectedFilterCategory !== "todas"
-    ? questions.filter(q => q.category === selectedFilterCategory)
+    ? questions.filter(q => getCategoryName(q.category_id) === selectedFilterCategory)
     : questions;
 
   return (
     <>
         {/* Título principal elegante */}
         <Fade in timeout={1000}>
-          <Box sx={{ textAlign: "center", mb: 6 }}>
+          <Box sx={{ textAlign: "center", mb: { xs: 4, md: 6 } }}>
             <Typography
               variant="h1"
               sx={{
@@ -604,7 +819,7 @@ function AdminPanel({
                 WebkitTextFillColor: "transparent",
                 textShadow: "0 4px 20px rgba(0,0,0,0.5)",
                 mb: 2,
-               fontSize: { xs: "3.5rem", md: "5.5rem" },
+               fontSize: { xs: "2.5rem", sm: "3.5rem", md: "5.5rem" },
                 letterSpacing: "0.05em",
                 fontFamily: "'Playfair Display', serif"
               }}
@@ -615,10 +830,11 @@ function AdminPanel({
               sx={{
                 color: colors.textPrimary,
                 fontWeight: 200,
-                fontSize: { xs: "1.1rem", md: "1.4rem" },
+                fontSize: { xs: "1rem", sm: "1.2rem", md: "1.4rem" },
                 letterSpacing: "0.1em",
                 textTransform: "uppercase",
-                fontFamily: "'Inter', sans-serif"
+                fontFamily: "'Inter', sans-serif",
+                textAlign: "center"
               }}
             >
             Preguntas y Respuestas
@@ -640,15 +856,15 @@ function AdminPanel({
         <Slide direction="up" in timeout={1400}>
           <Card
             sx={{
-              mb: 4,
-              maxHeight: "500px",
+              mb: { xs: 3, md: 4 },
+              maxHeight: { xs: "auto", md: "500px" },
               background: colors.cardBackground,
               ...COMMON_STYLES.card,
               overflow: "hidden"
             }}
           >
             <CardContent sx={{ 
-              p: 3, 
+              p: { xs: 2, md: 3 }, 
               height: "100%",
               display: "flex",
               flexDirection: "column",
@@ -669,42 +885,73 @@ function AdminPanel({
 
               <Stack
                 direction={{ xs: "column", md: "row" }}
-                spacing={2} // Reducido de 3 a 2
+                spacing={{ xs: 2, md: 2 }}
                 flexWrap="wrap"
                 alignItems="flex-start"
                 sx={{ flex: 1 }}
               >
-                <FormControl sx={{ minWidth: 200, flex: 1 }}>
+                <FormControl sx={{ minWidth: { xs: "100%", md: 200 }, flex: 1 }}>
                   <InputLabel sx={{ color: colors.textPrimary }}>Categoría</InputLabel>
                   <Select
                     value={category}
                     label="Categoría"
                     onChange={(e) => setCategory(e.target.value)}
-                    MenuProps={SELECT_MENU_PROPS}
+                    MenuProps={{
+                      ...SELECT_MENU_PROPS,
+                      PaperProps: {
+                        ...SELECT_MENU_PROPS.PaperProps,
+                        sx: {
+                          backgroundColor: colors.inputBackground,
+                          color: colors.textPrimary,
+                          maxHeight: 200,
+                          overflow: 'auto',
+                          "& .MuiMenuItem-root": {
+                            color: colors.textPrimary,
+                            backgroundColor: colors.inputBackground,
+                            "&:hover": {
+                              backgroundColor: colors.chipBackground
+                            },
+                            "&.Mui-selected": {
+                              backgroundColor: colors.chipBackground,
+                              "&:hover": {
+                                backgroundColor: colors.chipBackground
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }}
                     sx={{
                       borderRadius: 2,
                       backgroundColor: colors.inputBackground,
+                      minHeight: 56,
                       "& .MuiOutlinedInput-notchedOutline": {
-                        borderColor: "#B0B0B0",
+                        borderColor: colors.borderColor,
                         borderWidth: 2
                       },
                       "&:hover .MuiOutlinedInput-notchedOutline": {
-                        borderColor: "#475569"
+                        borderColor: colors.primary,
+                        borderWidth: 2
                       },
                       "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                        borderColor: "#9933FF",
+                        borderColor: colors.primary,
                         borderWidth: 2
                       },
                       "& .MuiSelect-select": {
+                        color: colors.textPrimary,
+                        fontWeight: 500,
+                        padding: "16px 14px"
+                      },
+                      "& .MuiSelect-icon": {
                         color: colors.textPrimary
                       }
                     }}
                   >
                     {categories.map((cat) => (
-                      <MenuItem key={cat} value={cat}>
+                      <MenuItem key={cat.id} value={cat.name_category}>
                         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                          <CategoryIcon sx={{ fontSize: 16, color: "#000000" }} />
-                          <Typography sx={{ color: "#000000" }}>{cat}</Typography>
+                          <CategoryIcon sx={{ fontSize: 16, color: colors.textPrimary }} />
+                          <Typography sx={{ color: colors.textPrimary }}>{cat.name_category}</Typography>
                         </Box>
                       </MenuItem>
                     ))}
@@ -725,7 +972,7 @@ function AdminPanel({
                       onChange={(e) => setNewCategory(capitalizeFirstLetter(e.target.value))}
                       sx={{
                         flex: 1,
-                        minWidth: 250,
+                        minWidth: { xs: "100%", md: 250 },
                         "& .MuiOutlinedInput-root": {
                           borderRadius: 2,
                           backgroundColor: colors.inputBackground,
@@ -766,13 +1013,14 @@ function AdminPanel({
                   </Fade>
                 )}
 
+
                 <TextField
                   label="Pregunta"
                   value={questionText}
                   onChange={(e) => setQuestionText(capitalizeFirstLetter(e.target.value))}
                   sx={{
                     flex: 2,
-                    minWidth: 250, // Reducido de 300 a 250
+                    minWidth: { xs: "100%", md: 250 },
                     "& .MuiOutlinedInput-root": {
                       borderRadius: 2,
                       backgroundColor: colors.inputBackground,
@@ -805,7 +1053,7 @@ function AdminPanel({
                   onChange={(e) => setAnswer(capitalizeFirstLetter(e.target.value))}
                   sx={{
                     flex: 2,
-                    minWidth: 250, // Reducido de 300 a 250
+                    minWidth: { xs: "100%", md: 250 },
                     "& .MuiOutlinedInput-root": {
                       borderRadius: 2,
                       backgroundColor: colors.inputBackground,
@@ -838,14 +1086,14 @@ function AdminPanel({
                   onClick={handleSubmit}
                   startIcon={<AddIcon />}
                   sx={{
-                    height: 50, // Reducido de 60 a 50
+                    height: { xs: 48, md: 50 },
                     borderRadius: 3,
                     background: "linear-gradient(145deg, #A988F2 0%, #8B6BCF 50%, #7C4EDB 100%)",
                     color: "white",
                     fontWeight: 700,
-                    fontSize: "1rem", 
-                    px: 3, 
-                    minWidth: 120, 
+                    fontSize: { xs: "0.9rem", md: "1rem" }, 
+                    px: { xs: 2, md: 3 }, 
+                    minWidth: { xs: "100%", md: 120 }, 
                     boxShadow: "0 8px 16px rgba(169, 136, 242, 0.3), inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(0,0,0,0.2)",
                     border: `1px solid ${colors.borderColor}`,
                     transition: "all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
@@ -863,6 +1111,33 @@ function AdminPanel({
                 >
                   {editingId ? "Actualizar" : "Agregar"}
                 </Button>
+                
+                {editingId && (
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      setEditingId(null);
+                      setCategory("");
+                      setNewCategory("");
+                      setQuestionText("");
+                      setAnswer("");
+                    }}
+                    sx={{
+                      borderRadius: 3,
+                      borderColor: colors.borderColor,
+                      color: colors.textPrimary,
+                      fontWeight: 600,
+                      px: 3,
+                      minWidth: 120,
+                      "&:hover": {
+                        borderColor: colors.primary,
+                        backgroundColor: colors.chipBackground
+                      }
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                )}
               </Stack>
             </CardContent>
           </Card>
@@ -872,32 +1147,32 @@ function AdminPanel({
         <Slide direction="down" in timeout={1200}>
           <Card
             sx={{
-              mb: 4,
+              mb: { xs: 3, md: 4 },
               background: colors.cardBackground,
               backdropFilter: "blur(10px)",
               borderRadius: 4,
               boxShadow: "0 20px 40px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.1), inset 0 1px 0 rgba(255,255,255,0.2)",
               border: "1px solid rgba(255,255,255,0.2)",
               transition: "all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
-              transform: "perspective(1000px) rotateX(2deg)",
+              transform: { xs: "none", md: "perspective(1000px) rotateX(2deg)" },
               "&:hover": {
-                transform: "perspective(1000px) rotateX(0deg) translateY(-8px) scale(1.02)",
+                transform: { xs: "none", md: "perspective(1000px) rotateX(0deg) translateY(-8px) scale(1.02)" },
                 boxShadow: "0 30px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.2), inset 0 1px 0 rgba(255,255,255,0.3)"
               }
             }}
           >
-            <CardContent sx={{ p: 3 }}>
-              <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+            <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+              <Stack direction={{ xs: "column", md: "row" }} spacing={{ xs: 2, md: 2 }} alignItems={{ xs: "stretch", md: "center" }} flexWrap="wrap">
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                   <FilterListIcon sx={{ color: colors.textPrimary, fontSize: 28 }} />
                   <Typography variant="h6" sx={{ fontWeight: 600, color: colors.textPrimary }}>
                     Filtrar por categoría
                   </Typography>
                 </Box>
-                <FormControl sx={{ minWidth: 250 }}>
+                <FormControl sx={{ minWidth: { xs: "100%", md: 250 } }}>
                   <InputLabel sx={{ color: colors.textPrimary }}>Categoría</InputLabel>
                   <Select
-                    value={selectedFilterCategory}
+                    value={selectedFilterCategory || ""}
                     label="Categoría"
                     onChange={(e) => {
                       setSelectedFilterCategory(e.target.value);
@@ -918,54 +1193,128 @@ function AdminPanel({
                       if (!value || value === "todas") return "Todas las categorías";
                       return value;
                     }}
-                    MenuProps={SELECT_MENU_PROPS}
-                    sx={{
-                      borderRadius: 2,
-                      backgroundColor: colors.inputBackground,
-                      "& .MuiOutlinedInput-notchedOutline": {
-                        borderColor: "#B0B0B0",
-                        borderWidth: 2
-                      },
-                      "&:hover .MuiOutlinedInput-notchedOutline": {
-                        borderColor: "#475569"
-                      },
-                      "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                        borderColor: "#9933FF",
-                        borderWidth: 2
-                      },
-                      "& .MuiSelect-select": {
-                        color: `${colors.textPrimary} !important`
-                      },
-                      "& .MuiOutlinedInput-input": {
-                        color: `${colors.textPrimary} !important`
-                      },
-                      "& .MuiSelect-icon": {
-                        color: `${colors.textPrimary} !important`
-                      },
-                      "& .MuiPaper-root": {
-                        backgroundColor: "#FFFFFF",
-                        "& .MuiMenuItem-root": {
-                          color: "#000000 !important",
-                          "&:hover": {
-                            backgroundColor: "rgba(169, 136, 242, 0.1) !important"
+                    MenuProps={{
+                      ...SELECT_MENU_PROPS,
+                      PaperProps: {
+                        ...SELECT_MENU_PROPS.PaperProps,
+                        sx: {
+                          backgroundColor: colors.inputBackground,
+                          color: colors.textPrimary,
+                          maxHeight: 200,
+                          overflow: 'auto',
+                          "& .MuiMenuItem-root": {
+                            color: colors.textPrimary,
+                            backgroundColor: colors.inputBackground,
+                            "&:hover": {
+                              backgroundColor: colors.chipBackground
+                            },
+                            "&.Mui-selected": {
+                              backgroundColor: colors.chipBackground,
+                              "&:hover": {
+                                backgroundColor: colors.chipBackground
+                              }
+                            }
                           }
                         }
                       }
                     }}
+                    sx={{
+                      borderRadius: 2,
+                      backgroundColor: colors.inputBackground,
+                      minHeight: 56,
+                      "& .MuiOutlinedInput-notchedOutline": {
+                        borderColor: colors.borderColor,
+                        borderWidth: 2
+                      },
+                      "&:hover .MuiOutlinedInput-notchedOutline": {
+                        borderColor: colors.primary,
+                        borderWidth: 2
+                      },
+                      "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+                        borderColor: colors.primary,
+                        borderWidth: 2
+                      },
+                      "& .MuiSelect-select": {
+                        color: colors.textPrimary,
+                        fontWeight: 500,
+                        padding: "16px 14px"
+                      },
+                      "& .MuiSelect-icon": {
+                        color: colors.textPrimary
+                      }
+                    }}
                   >
                     <MenuItem value="todas">
-                      <em style={{ color: "#000000" }}>Todas las categorías</em>
+                      <em style={{ color: colors.textPrimary }}>Todas las categorías</em>
                     </MenuItem>
                     {categories.map((cat) => (
-                      <MenuItem key={cat} value={cat}>
+                      <MenuItem key={cat.id} value={cat.name_category}>
                         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                          <CategoryIcon sx={{ fontSize: 16, color: "#000000" }} />
-                          <Typography sx={{ color: "#000000" }}>{cat}</Typography>
+                          <CategoryIcon sx={{ fontSize: 16, color: colors.textPrimary }} />
+                          <Typography sx={{ color: colors.textPrimary }}>{cat.name_category}</Typography>
                         </Box>
                       </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
+                
+                <Button
+                  variant="outlined"
+                  disabled={!selectedFilterCategory || selectedFilterCategory === "todas"}
+                  onClick={() => {
+                    const categoryToDelete = categories.find(cat => cat.name_category === selectedFilterCategory);
+                    if (categoryToDelete) {
+                      if (window.confirm(`¿Estás seguro de que quieres eliminar la categoría "${selectedFilterCategory}"?\n\nEsto eliminará todas las preguntas de esta categoría.`)) {
+                        handleDeleteCategory(categoryToDelete.id);
+                        setSelectedFilterCategory("todas");
+                      }
+                    }
+                  }}
+                  startIcon={<DeleteIcon />}
+                  sx={{
+                    borderRadius: 3,
+                    borderWidth: 2,
+                    fontWeight: 700,
+                    fontSize: "0.9rem",
+                    px: 3,
+                    py: 1.5,
+                    minWidth: 180,
+                    transition: "all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+                    transform: "perspective(1000px) rotateX(2deg)",
+                    boxShadow: "0 4px 8px rgba(255, 68, 68, 0.2), inset 0 1px 0 rgba(255,255,255,0.1)",
+                    borderColor: "#ff4444",
+                    color: "#ff4444",
+                    backgroundColor: "rgba(255, 68, 68, 0.05)",
+                    "&:hover": {
+                      backgroundColor: "#ff4444",
+                      color: "white",
+                      transform: "perspective(1000px) rotateX(0deg) translateY(-2px) scale(1.02)",
+                      boxShadow: "0 8px 16px rgba(255, 68, 68, 0.4), inset 0 1px 0 rgba(255,255,255,0.2)",
+                      borderColor: "#ff3333"
+                    },
+                    "&:active": {
+                      transform: "perspective(1000px) rotateX(1deg) translateY(-1px) scale(0.98)",
+                      boxShadow: "0 2px 4px rgba(255, 68, 68, 0.3), inset 0 1px 0 rgba(255,255,255,0.1)"
+                    },
+                    "&:disabled": {
+                      borderColor: "#666",
+                      color: "#666",
+                      backgroundColor: "rgba(102, 102, 102, 0.05)",
+                      opacity: 0.6,
+                      transform: "none",
+                      boxShadow: "none",
+                      "&:hover": {
+                        backgroundColor: "rgba(102, 102, 102, 0.05)",
+                        color: "#666",
+                        transform: "none",
+                        boxShadow: "none"
+                      }
+                    }
+                  }}
+                >
+                  Eliminar categoría
+                </Button>
+                
                 {selectedFilterCategory && selectedFilterCategory !== "todas" && (
                   <Button
                     variant="outlined"
@@ -988,7 +1337,7 @@ function AdminPanel({
                   </Button>
                 )}
               </Stack>
-              {selectedFilterCategory && (
+              {selectedFilterCategory && selectedFilterCategory !== "todas" && (
                 <Fade in timeout={500}>
                   <Box sx={{ mt: 2 }}>
                     <Divider sx={{ mb: 2 }} />
@@ -1026,14 +1375,14 @@ function AdminPanel({
               border: "1px solid rgba(255,255,255,0.2)",
               overflow: "hidden",
               transition: "all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
-              transform: "perspective(1000px) rotateX(2deg)",
+              transform: { xs: "none", md: "perspective(1000px) rotateX(2deg)" },
               "&:hover": {
-                transform: "perspective(1000px) rotateX(0deg) translateY(-8px) scale(1.02)",
+                transform: { xs: "none", md: "perspective(1000px) rotateX(0deg) translateY(-8px) scale(1.02)" },
                 boxShadow: "0 30px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.2), inset 0 1px 0 rgba(255,255,255,0.3)"
               }
             }}
           >
-            <Box sx={{ p: 3, borderBottom: "1px solid #000000" }}>
+            <Box sx={{ p: { xs: 2, md: 3 }, borderBottom: "1px solid #000000" }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                 <QuestionAnswerIcon sx={{ color: colors.textPrimary, fontSize: 28 }} />
                 <Typography
@@ -1046,7 +1395,7 @@ function AdminPanel({
                   Lista de Preguntas
                 </Typography>
                 <Chip
-                  label={`${filteredQuestions.length} pregunta(s)`}
+                        label={`${filteredQuestions.length} pregunta(s)`}
                   sx={{
                     backgroundColor: "#A988F2",
                     color: "white",
@@ -1056,15 +1405,17 @@ function AdminPanel({
               </Box>
             </Box>
             
-            <TableContainer id="questions-table">
-              <Table>
+            {/* Vista de tabla para desktop */}
+            <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+              <TableContainer id="questions-table" sx={{ overflowX: 'auto' }}>
+                <Table sx={{ minWidth: 'auto' }}>
                 <TableHead>
-                  <TableRow sx={{ backgroundColor: colors.chipBackground }}>
-                    {[
-                      { title: "Categoría", width: "12%" },
-                      { title: "Pregunta", width: "30%" },
-                      { title: "Respuesta", width: "30%" },
-                      { title: "Estado", width: "13%" },
+                    <TableRow sx={{ backgroundColor: colors.chipBackground }}>
+                      {[
+                        { title: "Categoría", width: "12%" },
+                        { title: "Pregunta", width: "30%" },
+                        { title: "Respuesta", width: "30%" },
+                        { title: "Estado", width: "13%" },
                       { title: "Acciones", width: "15%" },
                     ].map((header) => (
                       <TableCell
@@ -1072,11 +1423,11 @@ function AdminPanel({
                         sx={{
                           fontWeight: 700,
                           fontSize: "1rem",
-                          color: colors.textPrimary,
+                            color: colors.textPrimary,
                           borderBottom: "2px solid #475569",
                           py: 2
                         }}
-                        align={header.title === "Acciones" || header.title === "Estado" ? "center" : "left"}
+                          align={header.title === "Acciones" || header.title === "Estado" ? "center" : "left"}
                       >
                         {header.title}
                       </TableCell>
@@ -1089,7 +1440,7 @@ function AdminPanel({
                       <TableRow
                         hover
                         sx={{
-                           backgroundColor: colors.chipBackground,
+                             backgroundColor: colors.chipBackground,
                           transition: "all 0.3s ease",
                           "&:hover": {
                             backgroundColor: "rgba(102, 126, 234, 0.08)",
@@ -1099,41 +1450,41 @@ function AdminPanel({
                       >
                         <TableCell sx={{ py: 2 }}>
                           <Chip
-                            label={q.category}
+                            label={getCategoryName(q.category_id)}
                             sx={{
-                              backgroundColor: colors.chipBackground,
-                              color: colors.textPrimary,
+                                backgroundColor: colors.chipBackground,
+                                color: colors.textPrimary,
                               fontWeight: 600,
                               borderRadius: 2
                             }}
                           />
                         </TableCell>
-                        <TableCell sx={{ py: 2, fontWeight: 500, color: colors.textPrimary }}>
+                          <TableCell sx={{ py: 2, fontWeight: 500, color: colors.textPrimary }}>
                           {q.question}
                         </TableCell>
-                        <TableCell sx={{ py: 2, color: colors.textPrimary }}>
+                          <TableCell sx={{ py: 2, color: colors.textPrimary }}>
                           {q.answer}
                         </TableCell>
-                        <TableCell sx={{ py: 2 }} align="center">
-                          <Switch
-                            checked={questionStates[q.id] === true}
-                            onChange={() => handleToggleQuestionState(q.id)}
-                            sx={{
-                              '& .MuiSwitch-switchBase.Mui-checked': {
-                                color: colors.buttonColor,
-                              },
-                              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                                backgroundColor: colors.buttonColor,
-                              },
-                            }}
-                          />
+                          <TableCell sx={{ py: 2 }} align="center">
+                            <Switch
+                              checked={questionStates[q.id] === true}
+                              onChange={() => handleToggleQuestionState(q.id)}
+                              sx={{
+                                '& .MuiSwitch-switchBase.Mui-checked': {
+                                  color: colors.buttonColor,
+                                },
+                                '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                                  backgroundColor: colors.buttonColor,
+                                },
+                              }}
+                            />
                         </TableCell>
                         <TableCell sx={{ py: 2 }} align="center">
                           <Stack direction="row" spacing={1} justifyContent="center">
                             <IconButton
                               onClick={() => handleEdit(q)}
                               sx={{
-                                color: colors.textPrimary,
+                                  color: colors.textPrimary,
                                 transition: "all 0.3s ease",
                                 "&:hover": {
                                   backgroundColor: "rgba(102, 126, 234, 0.1)",
@@ -1164,6 +1515,111 @@ function AdminPanel({
                 </TableBody>
               </Table>
             </TableContainer>
+            </Box>
+
+            {/* Vista de cards para móvil */}
+            <Box sx={{ display: { xs: 'block', md: 'none' } }}>
+              <Stack spacing={2} sx={{ p: 2 }}>
+                {filteredQuestions.map((q, index) => (
+                  <Fade in timeout={500 + index * 100} key={q.id}>
+                    <Card
+                      sx={{
+                        backgroundColor: colors.inputBackground,
+                        borderRadius: 3,
+                        border: `1px solid ${colors.borderColor}`,
+                        transition: "all 0.3s ease",
+                        "&:hover": {
+                          backgroundColor: "rgba(169, 136, 242, 0.1)",
+                          transform: "translateY(-2px)",
+                          boxShadow: "0 8px 25px rgba(0,0,0,0.2)"
+                        }
+                      }}
+                    >
+                      <CardContent sx={{ p: 3 }}>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          {/* Header con categoría y estado */}
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Chip
+                              label={getCategoryName(q.category_id)}
+                              sx={{
+                                backgroundColor: colors.chipBackground,
+                                color: colors.textPrimary,
+                                fontWeight: 600,
+                                borderRadius: 2
+                              }}
+                            />
+                            <Switch
+                              checked={questionStates[q.id] === true}
+                              onChange={() => handleToggleQuestionState(q.id)}
+                              sx={{
+                                '& .MuiSwitch-switchBase.Mui-checked': {
+                                  color: colors.buttonColor,
+                                },
+                                '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                                  backgroundColor: colors.buttonColor,
+                                },
+                              }}
+                            />
+                          </Box>
+                          
+                          {/* Pregunta */}
+                          <Box>
+                            <Typography variant="subtitle2" sx={{ color: colors.textSecondary, fontWeight: 600, mb: 1 }}>
+                              Pregunta:
+                            </Typography>
+                            <Typography variant="body1" sx={{ color: colors.textPrimary, fontWeight: 500 }}>
+                              {q.question}
+                            </Typography>
+                          </Box>
+                          
+                          {/* Respuesta */}
+                          <Box>
+                            <Typography variant="subtitle2" sx={{ color: colors.textSecondary, fontWeight: 600, mb: 1 }}>
+                              Respuesta:
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: colors.textPrimary }}>
+                              {q.answer}
+                            </Typography>
+                          </Box>
+                          
+                          {/* Botones de acción */}
+                          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, pt: 1 }}>
+                            <IconButton
+                              onClick={() => handleEdit(q)}
+                              sx={{
+                                color: colors.textPrimary,
+                                backgroundColor: `${colors.buttonColor}20`,
+                                transition: "all 0.3s ease",
+                                "&:hover": {
+                                  backgroundColor: `${colors.buttonColor}40`,
+                                  transform: "scale(1.1)"
+                                }
+                              }}
+                            >
+                              <EditIcon />
+                            </IconButton>
+                            <IconButton
+                              onClick={() => confirmDelete(q.id)}
+                              sx={{
+                                color: "#e53e3e",
+                                backgroundColor: "rgba(229, 62, 62, 0.1)",
+                                transition: "all 0.3s ease",
+                                "&:hover": {
+                                  backgroundColor: "rgba(229, 62, 62, 0.2)",
+                                  transform: "scale(1.1)"
+                                }
+                              }}
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </Box>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Fade>
+                ))}
+              </Stack>
+            </Box>
           </Card>
         </Slide>
 
@@ -1184,13 +1640,13 @@ function AdminPanel({
             textAlign: "center", 
             fontSize: "1.3rem", 
             fontWeight: 600,
-                    color: "#000000",
+            color: colors.textPrimary,
             py: 3
           }}>
              ¿Eliminar pregunta?
           </DialogTitle>
           <Box sx={{ px: 3, pb: 2 }}>
-            <Typography sx={{ textAlign: "center", color: "#FFFFFF" }}>
+            <Typography sx={{ textAlign: "center", color: colors.textPrimary }}>
               Esta acción no se puede deshacer
             </Typography>
           </Box>
@@ -1234,17 +1690,34 @@ function AdminPanel({
 }
 
 // Ratings Tab Component
-function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilterModalidad, colors, loadRatings, historicalData, isAnimating }) {
+function RatingsTab({ 
+  ratings, 
+  loading, 
+  selectedFilterModalidad, 
+  setSelectedFilterModalidad,
+  colors, 
+  loadRatings, 
+  historicalData, 
+  isAnimating 
+}) {
 
-  useEffect(() => {
-    loadRatings();
-  }, [loadRatings]);
-
+  // Función para filtrar ratings
+  const filteredRatings = ratings.filter(rating => {
+    // Filtro por modalidad - buscar en diferentes campos posibles
+    const ratingModality = (rating.modality || rating.modalidad || rating.Modality?.type || '').toString().trim();
+    const filterModality = selectedFilterModalidad?.trim() || '';
+    
+    const modalityMatch = !selectedFilterModalidad || 
+                          filterModality === "todas" || 
+                          ratingModality === filterModality;
+    
+    return modalityMatch;
+  });
 
   return (
     <>
       {/* Título principal */}
-      <Fade in timeout={1000}>
+      <Fade in timeout={300}>
         <Box sx={{ textAlign: "center", mb: 6 }}>
           <Typography
             variant="h3"
@@ -1274,7 +1747,7 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
 
 
       {/* Lista de calificaciones */}
-      <Slide direction="up" in timeout={1600}>
+      <Slide direction="up" in timeout={500}>
         <Card
           sx={{
             background: colors.cardBackground,
@@ -1292,8 +1765,8 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
           }}
         >
           <Box sx={{ p: 3, borderBottom: "1px solid rgba(0,0,0,0.1)" }}>
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <Box sx={{ display: "flex", gap: 2 }}>
+            <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, alignItems: { xs: "stretch", md: "center" }, justifyContent: "space-between", gap: 2 }}>
+              <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, gap: 2, flex: 1 }}>
                 <Box sx={{ 
                   display: "flex", 
                   alignItems: "center", 
@@ -1314,7 +1787,7 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
                     Lista de Reseñas
                   </Typography>
                   <Chip
-                    label={`${ratings.filter(rating => !selectedFilterModalidad || selectedFilterModalidad === "todas" || rating.modalidad === selectedFilterModalidad).length} reseña(s)`}
+                    label={`${filteredRatings.length} reseña(s)`}
                     sx={{
                       backgroundColor: "#A988F2",
                       color: "white",
@@ -1327,11 +1800,12 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
                 <Box sx={{ 
                   display: "flex", 
                   alignItems: "center", 
-                  gap: 2,
-                        backgroundColor: colors.ratingCardBackground,
+                  gap: { xs: 1, md: 2 },
+                  backgroundColor: colors.ratingCardBackground,
                   borderRadius: 3,
-                  p: 2,
-                  border: `1px solid ${colors.borderColor}`
+                  p: { xs: 1.5, md: 2 },
+                  border: `1px solid ${colors.borderColor}`,
+                  flexDirection: { xs: "column", sm: "row" }
                 }}>
                   <Typography
                     variant="body1"
@@ -1342,7 +1816,7 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
                   >
                     Filtrar:
                   </Typography>
-                  <FormControl sx={{ minWidth: 120 }}>
+                  <FormControl sx={{ minWidth: { xs: "100%", sm: 120 } }}>
                     <InputLabel sx={{ color: colors.textPrimary, fontSize: '0.875rem' }}>Modalidad</InputLabel>
                     <Select
                       value={selectedFilterModalidad || ""}
@@ -1403,17 +1877,16 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
                     <MenuItem value="todas">
                       <em style={{ color: "#000000" }}>Todas</em>
                     </MenuItem>
-                      <MenuItem value="Sede">
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                          <Typography sx={{ color: "#000000" }}>🏫</Typography>
-                          <Typography sx={{ color: "#000000" }}>Sede</Typography>
-                        </Box>
-                      </MenuItem>
-
                       <MenuItem value="100% Online">
                         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                           <Typography sx={{ color: "#000000" }}>💻</Typography>
                           <Typography sx={{ color: "#000000" }}>100% Online</Typography>
+                        </Box>
+                      </MenuItem>
+                      <MenuItem value="Sede">
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                          <Typography sx={{ color: "#000000" }}>🏫</Typography>
+                          <Typography sx={{ color: "#000000" }}>Sede</Typography>
                         </Box>
                       </MenuItem>
                     </Select>
@@ -1422,50 +1895,82 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
               </Box>
               
               {/* Cuadros de estadísticas */}
-              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+              <Box sx={{ 
+                display: "flex", 
+                gap: { xs: 2, md: 3 }, 
+                flexDirection: { xs: "column", md: "row" },
+                width: "100%",
+                justifyContent: "center",
+                alignItems: "stretch"
+              }}>
                 {/* Cuadro de promedio total */}
                 <Box sx={{
                   backgroundColor: colors.ratingCardBackground,
                   borderRadius: 3,
-                  p: 3,
-                  minWidth: 200,
+                  p: { xs: 2, md: 3 },
                   border: "1px solid rgba(255,255,255,0.1)",
                   textAlign: "center",
                   flex: 1
                 }}>
-                  <Typography variant="h6" sx={{ color: colors.textPrimary, fontWeight: 600, mb: 1 }}>
+                  <Typography variant="h6" sx={{ 
+                    color: colors.textPrimary, 
+                    fontWeight: 600, 
+                    mb: 1,
+                    fontSize: { xs: '1rem', md: '1.25rem' }
+                  }}>
                     Promedio Total
                   </Typography>
-                  <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 1, mb: 1 }}>
+                  <Box sx={{ 
+                    display: "flex", 
+                    justifyContent: "center", 
+                    alignItems: "center", 
+                    gap: { xs: 0.5, md: 1 }, 
+                    mb: 1,
+                    flexDirection: { xs: "column", sm: "row" }
+                  }}>
                     <Typography variant="h4" sx={{ 
                       color: colors.textPrimary, 
                       fontWeight: 700,
                       fontFamily: "'Courier New', 'Monaco', 'Consolas', monospace",
-                      fontSize: '2.5rem',
+                      fontSize: { xs: '1.8rem', sm: '2.2rem', md: '2.5rem' },
                       letterSpacing: '0.1em',
-                      fontVariantNumeric: 'tabular-nums'
+                      fontVariantNumeric: 'tabular-nums',
+                      lineHeight: 1
                     }}>
-                      {ratings.length > 0 ? (ratings.reduce((sum, rating) => sum + rating.calificacion, 0) / ratings.length).toFixed(1) : "0.0"}
+                      {ratings.length > 0 ? (ratings.reduce((sum, rating) => sum + (Number(rating.score) || 0), 0) / ratings.length).toFixed(1) : "0.0"}
                     </Typography>
-                    <Typography variant="h6" sx={{ color: colors.textPrimary, opacity: 0.7 }}>
+                    <Typography variant="h6" sx={{ 
+                      color: colors.textPrimary, 
+                      opacity: 0.7,
+                      fontSize: { xs: '0.9rem', md: '1.25rem' }
+                    }}>
                       / 5.0
                     </Typography>
                   </Box>
-                  <Box sx={{ display: "flex", justifyContent: "center", gap: 0.5 }}>
+                  <Box sx={{ 
+                    display: "flex", 
+                    justifyContent: "center", 
+                    gap: { xs: 0.3, md: 0.5 },
+                    mb: 1
+                  }}>
                     {[...Array(5)].map((_, i) => {
-                      const average = ratings.length > 0 ? ratings.reduce((sum, rating) => sum + rating.calificacion, 0) / ratings.length : 0;
+                      const average = ratings.length > 0 ? ratings.reduce((sum, rating) => sum + (Number(rating.score) || 0), 0) / ratings.length : 0;
                       return (
                         <Typography key={i} sx={{ 
                           color: i < average ? '#FFD700' : colors.textPrimary, 
                           opacity: i < average ? 1 : 0.3,
-                          fontSize: '1.5rem'
+                          fontSize: { xs: '1.2rem', md: '1.5rem' }
                         }}>
                           ⭐
                         </Typography>
                       );
                     })}
                   </Box>
-                  <Typography variant="caption" sx={{ color: colors.textPrimary, opacity: 0.7 }}>
+                  <Typography variant="caption" sx={{ 
+                    color: colors.textPrimary, 
+                    opacity: 0.7,
+                    fontSize: { xs: '0.75rem', md: '0.875rem' }
+                  }}>
                     {ratings.length} evaluación{ratings.length !== 1 ? 'es' : ''}
                   </Typography>
                 </Box>
@@ -1474,13 +1979,17 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
                 <Box sx={{
                   backgroundColor: colors.ratingCardBackground,
                   borderRadius: 3,
-                  p: 3,
-                  minWidth: 200,
+                  p: { xs: 2, md: 3 },
                   border: "1px solid rgba(255,255,255,0.1)",
                   textAlign: "center",
                   flex: 1
                 }}>
-                  <Typography variant="h6" sx={{ color: colors.textPrimary, fontWeight: 600, mb: 1 }}>
+                  <Typography variant="h6" sx={{ 
+                    color: colors.textPrimary, 
+                    fontWeight: 600, 
+                    mb: 1,
+                    fontSize: { xs: '1rem', md: '1.25rem' }
+                  }}>
                     Usuarios Nuevos
                   </Typography>
                   <Box sx={{ 
@@ -1488,7 +1997,7 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
                     justifyContent: "center", 
                     alignItems: "center", 
                     mb: 1,
-                    height: '4rem',
+                    height: { xs: '3rem', md: '4rem' },
                     width: '100%'
                   }}>
                     <Typography 
@@ -1498,7 +2007,7 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
                         color: colors.textPrimary, 
                         fontWeight: 700,
                         fontFamily: "'Courier New', 'Monaco', 'Consolas', monospace",
-                        fontSize: '4rem',
+                        fontSize: { xs: '2.5rem', sm: '3.2rem', md: '4rem' },
                         letterSpacing: '0.1em',
                         transform: isAnimating ? 'translateY(-100%)' : 'translateY(0)',
                         transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -1514,18 +2023,36 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
                         Object.values(historicalData).reduce((sum, count) => sum + count, 0) : 0}
                     </Typography>
                   </Box>
-                  <Box sx={{ display: "flex", justifyContent: "center", gap: 0.5, mb: 1 }}>
-                    <Typography sx={{ color: "#4CAF50", fontSize: '1.5rem' }}>
+                  <Box sx={{ 
+                    display: "flex", 
+                    justifyContent: "center", 
+                    gap: { xs: 0.3, md: 0.5 }, 
+                    mb: 1 
+                  }}>
+                    <Typography sx={{ 
+                      color: "#4CAF50", 
+                      fontSize: { xs: '1.2rem', md: '1.5rem' } 
+                    }}>
                       🎓
                     </Typography>
                   </Box>
-                  <Typography variant="caption" sx={{ color: colors.textPrimary, opacity: 0.7 }}>
+                  <Typography variant="caption" sx={{ 
+                    color: colors.textPrimary, 
+                    opacity: 0.7,
+                    fontSize: { xs: '0.75rem', md: '0.875rem' }
+                  }}>
                     {historicalData && typeof historicalData === 'object' && Object.keys(historicalData).length > 0 ? 
                       Object.keys(historicalData).sort().pop() : 
                       new Date().toLocaleDateString('es-CL')
                     }
                   </Typography>
-                  <Typography variant="caption" sx={{ color: colors.textPrimary, opacity: 0.5, display: 'block', mt: 0.5 }}>
+                  <Typography variant="caption" sx={{ 
+                    color: colors.textPrimary, 
+                    opacity: 0.5, 
+                    display: 'block', 
+                    mt: 0.5,
+                    fontSize: { xs: '0.7rem', md: '0.75rem' }
+                  }}>
                     (sesiones nuevas)
                   </Typography>
                 </Box>
@@ -1552,10 +2079,8 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
               </Box>
             ) : (
               <Stack spacing={2}>
-                {ratings
-                  .filter(rating => !selectedFilterModalidad || selectedFilterModalidad === "todas" || rating.modalidad === selectedFilterModalidad)
-                  .map((rating, index) => (
-                  <Fade in timeout={500 + index * 100} key={rating.id}>
+                {filteredRatings.map((rating, index) => (
+                  <Fade in timeout={200 + index * 50} key={rating.id}>
                     <Card
                       sx={{
                         p: 3,
@@ -1572,7 +2097,7 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
                     >
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         {/* Header con nombre y fecha */}
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 1 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                             <Box sx={{ 
                               width: 40, 
@@ -1593,8 +2118,8 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
                                 {rating.nombre || 'Estudiante sin nombre'}
                               </Typography>
                               <Typography variant="caption" sx={{ color: colors.textPrimary, opacity: 0.7 }}>
-                                {rating.fecha ? (() => {
-                                  const date = new Date(rating.fecha);
+                                {rating.date ? (() => {
+                                  const date = new Date(rating.date);
                                   date.setHours(date.getHours() - 3); // Ajuste para Chile (UTC-3)
                                   return date.toLocaleString('es-CL', { 
                                     timeZone: 'America/Santiago',
@@ -1637,7 +2162,7 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
                           </Box>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             <Typography variant="body2" sx={{ color: colors.textPrimary, opacity: 0.8 }}>
-                              {rating.modalidad || 'Sin modalidad'}
+                              {(rating.modality || rating.modalidad || rating.Modality?.type || 'Sin modalidad').trim()}
                             </Typography>
                             <Box sx={{ 
                               width: 24, 
@@ -1657,8 +2182,8 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
                           {[...Array(5)].map((_, i) => (
                             <Typography key={i} sx={{ 
-                              color: i < rating.calificacion ? '#FFD700' : colors.textPrimary, 
-                              opacity: i < rating.calificacion ? 1 : 0.3,
+                              color: i < (Number(rating.score) || 0) ? '#FFD700' : colors.textPrimary, 
+                              opacity: i < (Number(rating.score) || 0) ? 1 : 0.3,
                               fontSize: '1.2rem'
                             }}>
                               ⭐
@@ -1667,13 +2192,13 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
                         </Box>
                         
                         {/* Comentario */}
-                        {rating.comentario && (
+                        {rating.comment && (
                           <Typography variant="body2" sx={{ 
                             color: colors.textPrimary, 
                             opacity: 0.9,
                             lineHeight: 1.5
                           }}>
-                            "{rating.comentario}"
+                            "{rating.comment}"
                           </Typography>
                         )}
                         
@@ -1694,6 +2219,32 @@ function RatingsTab({ ratings, loading, selectedFilterModalidad, setSelectedFilt
       </Slide>
     </>
   );
+}
+
+// Estilos CSS para animaciones
+const styles = `
+  @keyframes pulse {
+    0% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.5;
+      transform: scale(1.2);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+`;
+
+// Agregar estilos al documento
+if (typeof document !== 'undefined') {
+  const styleSheet = document.createElement("style");
+  styleSheet.type = "text/css";
+  styleSheet.innerText = styles;
+  document.head.appendChild(styleSheet);
 }
 
 export default App;

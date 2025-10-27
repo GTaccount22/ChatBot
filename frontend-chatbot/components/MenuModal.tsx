@@ -87,12 +87,23 @@ export default function MenuModal({ visible, onClose, onLogout }: MenuModalProps
 
   const styles = StyleSheet.create({
     overlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
-    modalContainer: { backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, height: screenHeight * 0.75 },
+    modalContainer: { 
+      backgroundColor: colors.background, 
+      borderTopLeftRadius: 20, 
+      borderTopRightRadius: 20, 
+      height: screenHeight * 0.75,
+      maxHeight: screenHeight * 0.9,
+      minHeight: 400,
+    },
     handle: { width: 40, height: 4, backgroundColor: colors.border, borderRadius: 2, alignSelf: 'center', marginVertical: 8 },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: colors.border },
     title: { fontSize: 24, fontWeight: 'bold', color: colors.text },
     closeButton: { padding: 8, borderRadius: 20, backgroundColor: colors.surface },
-    content: { paddingHorizontal: 20, paddingTop: 20 },
+    content: { 
+      paddingHorizontal: 20, 
+      paddingTop: 20,
+      flex: 1,
+    },
     settingsSection: { marginBottom: 30 },
     sectionTitle: { fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: 15, marginLeft: 5 },
     settingItem: { 
@@ -150,7 +161,11 @@ export default function MenuModal({ visible, onClose, onLogout }: MenuModalProps
                 </TouchableOpacity>
               </View>
 
-              <ScrollView style={styles.content}>
+              <ScrollView 
+                style={styles.content}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 20 }}
+              >
                 {/* Sección Configuración */}
                 <View style={styles.settingsSection}>
                   <Text style={styles.sectionTitle}>Configuración</Text>

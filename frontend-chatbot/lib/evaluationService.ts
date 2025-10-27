@@ -42,16 +42,32 @@ export class EvaluationService {
 
       console.log('💾 Insertando evaluación en base de datos...');
       
-      // Insertar evaluación automáticamente
+      // Obtener el ID del usuario actual
+      const userId = sessionData.user.id;
+      console.log('👤 User ID:', userId);
+      
+      // Obtener la modalidad del usuario directamente desde User
+      const { data: userData, error: userError } = await supabase
+        .from('User')
+        .select('modality_id')
+        .eq('id', userId)
+        .single();
+      
+      if (userError || !userData) {
+        console.error('❌ Error obteniendo usuario:', userError);
+        return { success: false, error: 'Error al obtener usuario' };
+      }
+      
+      console.log('✅ Modalidad del usuario:', userData.modality_id);
+      
+      // Insertar evaluación sin modality_id (se obtendrá desde User con JOIN)
       const { data, error } = await supabase
-        .from('calificaciones')
+        .from('Rating')
         .insert([{
-          nombre: evaluationData.nombre,
-          correo: evaluationData.correo,
-          modalidad: evaluationData.modalidad,
-          calificacion: evaluationData.calificacion,
-          comentario: evaluationData.comentario || null,
-          fecha: new Date().toISOString()
+          user_id: userId,
+          score: evaluationData.calificacion,
+          comment: evaluationData.comentario || null,
+          date: new Date().toISOString()
         }])
         .select();
 

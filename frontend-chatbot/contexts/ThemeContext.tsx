@@ -34,27 +34,27 @@ interface ThemeProviderProps {
 }
 
 const lightColors = {
-  background: '#FFFFFF',
-  surface: '#F8F9FA',
+  background: '#DCDCDC',
+  surface: '#FFFFFF',
   text: '#000000',
   textSecondary: '#666666',
   border: '#CCCCCC',
   primary: '#007BFF',
   error: '#FF3B30',
   overlay: 'rgba(0,0,0,0.4)',
-  tabBarBackground: '#FFFFFF',
+  tabBarBackground: '#DCDCDC',
 };
 
 const darkColors = {
-  background: '#000000',
-  surface: '#1C1C1E',
+  background: '#121212',
+  surface: '#1E1E1E',
   text: '#FFFFFF',
   textSecondary: '#CCCCCC',
   border: '#333333',
   primary: '#007AFF',
   error: '#FF3B30',
   overlay: 'rgba(0,0,0,0.8)',
-  tabBarBackground: '#1C1C1E',
+  tabBarBackground: '#1E1E1E',
 };
 
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {

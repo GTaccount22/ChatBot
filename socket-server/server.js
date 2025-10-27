@@ -23,7 +23,7 @@ const io = new Server(server, {
       origin: [
         "http://localhost:3000",  // Web React
         "http://localhost:8081",  // App Móvil Expo
-        "exp://192.168.1.20:8081" // App Móvil en red local
+        "exp://2w08npi-victorz14-8081.exp.direct" //app expo link
       ],
       methods: ["GET", "POST"],
     },
@@ -75,7 +75,10 @@ function verificarReinicioDiario() {
   const hoy = getFechaHoy();
   const ultimaFecha = Object.keys(usuariosPorDia).sort().pop();
   
-  console.log(`🕐 Verificando fecha: Hoy=${hoy}, Última=${ultimaFecha}`);
+  // Solo mostrar log si hay un cambio o si es la primera vez
+  if (!ultimaFecha || ultimaFecha !== hoy) {
+    console.log(`🕐 Verificando fecha: Hoy=${hoy}, Última=${ultimaFecha}`);
+  }
   
   // Si la última fecha no es hoy, reiniciar contadores
   if (ultimaFecha && ultimaFecha !== hoy) {
@@ -132,9 +135,22 @@ app.post("/api/reset-hoy", (req, res) => {
   });
 });
 
+// Endpoint para debug - ver estado del servidor
+app.get("/api/debug", (req, res) => {
+  const hoy = getFechaHoy();
+  res.json({
+    fecha_actual: hoy,
+    contadores: usuariosPorDia,
+    usuarios_procesados: Array.from(usuariosProcesados),
+    conexiones_activas: io.engine.clientsCount,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Socket.IO
 io.on("connection", (socket) => {
-  console.log("Cliente conectado:", socket.id);
+  console.log("🔌 Cliente conectado:", socket.id);
+  console.log("🌐 Origen de conexión:", socket.handshake.headers.origin);
 
   // Nuevo usuario (solo para logging, NO cuenta)
   socket.on("nuevo_usuario", (data) => {
@@ -152,10 +168,15 @@ io.on("connection", (socket) => {
   // Modificar el evento tutorial_completado
   socket.on("tutorial_completado", (data) => {
     console.log('🎓 Tutorial completado recibido:', data);
+    console.log('🔍 Datos recibidos:', JSON.stringify(data, null, 2));
     
     // Usar siempre la fecha actual para la clave única
     const hoy = getFechaHoy();
     const key = `${data.usuario_id}_${hoy}`;
+    
+    console.log('🔑 Clave generada:', key);
+    console.log('📅 Fecha actual:', hoy);
+    console.log('👥 Usuarios ya procesados:', Array.from(usuariosProcesados));
     
     if (usuariosProcesados.has(key)) {
       console.log('⚠️ Usuario ya procesado, ignorando:', key);
@@ -178,6 +199,7 @@ io.on("connection", (socket) => {
       io.emit("actualizar_conteo", { fecha: hoy, total: usuariosPorDia[hoy] });
     } else {
       console.log('ℹ️ Tutorial repetido, no se cuenta:', key);
+      console.log('❌ es_primer_tutorial es false:', data.es_primer_tutorial);
     }
   });
 
