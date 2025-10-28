@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { getQuestions, createQuestion, updateQuestion, deleteQuestion, toggleQuestionState } from "./services/questionService";
 import { getRatings } from "./services/ratingService";
 import { getCategories, createCategory, updateCategory, deleteCategory } from "./services/categoryService";
@@ -21,6 +21,7 @@ import {
   InputLabel,
   FormControl,
   Stack,
+  Grid,
   Dialog,
   DialogTitle,
   DialogActions,
@@ -40,7 +41,8 @@ import {
   useTheme,
   useMediaQuery,
   Switch,
-  FormControlLabel
+  FormControlLabel,
+  Pagination
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -53,6 +55,43 @@ import GradeIcon from "@mui/icons-material/Grade";
 import MenuIcon from "@mui/icons-material/Menu";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
+
+// Función helper para Google Analytics
+const trackEvent = (eventName, params = {}) => {
+  if (typeof window !== 'undefined' && window.gtag) {
+    window.gtag('event', eventName, params);
+  }
+};
+
+// Hook personalizado para animar elementos al hacer scroll
+const useScrollAnimation = () => {
+  const [isVisible, setIsVisible] = useState(false);
+  const ref = useRef();
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.unobserve(entry.target);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (ref.current) {
+      observer.observe(ref.current);
+    }
+
+    return () => {
+      if (ref.current) {
+        observer.unobserve(ref.current);
+      }
+    };
+  }, []);
+
+  return { ref, isVisible };
+};
 
 function App() {
   const theme = useTheme();
@@ -80,11 +119,9 @@ function App() {
     return savedMode !== null ? JSON.parse(savedMode) : true;
   });
   
-  // Estados para Socket.IO y datos históricos
+  // Estados para Socket.IO
   const [socket, setSocket] = useState(null);
-  const [historicalData, setHistoricalData] = useState({});
   const [socketConnected, setSocketConnected] = useState(false);
-  const [isAnimating, setIsAnimating] = useState(false);
   
   // Ratings state
   const [ratings, setRatings] = useState([]);
@@ -183,6 +220,7 @@ function App() {
     
     try {
       await createCategory({ name_category: newCategory.trim() });
+      trackEvent('create_category', { category_name: newCategory.trim() });
       setNewCategory("");
       await loadCategories(); // Recargar categorías
       await loadQuestions(); // Recargar preguntas para actualizar el dropdown
@@ -202,6 +240,7 @@ function App() {
   const handleDeleteCategory = async (categoryId) => {
     try {
       await deleteCategory(categoryId);
+      trackEvent('delete_category', { category_id: categoryId });
       await loadCategories();
       await loadQuestions();
     } catch (error) {
@@ -212,74 +251,72 @@ function App() {
   // Inicializar Socket.IO con detección automática de ngrok
   useEffect(() => {
     let mounted = true;
+    let currentSocket = null;
     
     const initializeSocket = async () => {
       try {
-        // Probar ngrok primero
-        const isNgrokAvailable = await testNgrokConnection();
-        const socketUrl = 'http://localhost:5000';
+        // URL de ngrok para Socket.IO
+        const socketUrl = 'https://exilic-unconditionally-channing.ngrok-free.dev';
         
         console.log(`🔄 Conectando Socket.IO a: ${socketUrl}`);
         
-        const newSocket = io(socketUrl, {
-          transports: ["websocket"],
-          timeout: 10000,
+        currentSocket = io(socketUrl, {
+          transports: ["polling", "websocket"], // Permitir ambos, pero preferir polling
+          timeout: 15000,
           reconnection: true,
-          reconnectionAttempts: 3,
+          reconnectionAttempts: 10,
           reconnectionDelay: 2000,
-          extraHeaders: isNgrokAvailable ? {
+          reconnectionDelayMax: 10000,
+          upgrade: true,
+          rememberUpgrade: true,
+          extraHeaders: {
             'ngrok-skip-browser-warning': 'true'
-          } : {}
+          },
+          forceNew: true,
+          path: undefined // No usar /socket.io/ path con ngrok
         });
         
         if (!mounted) return;
         
-        setSocket(newSocket);
+        setSocket(currentSocket);
 
         // Eventos de conexión
-        newSocket.on('connect', () => {
+        currentSocket.on('connect', () => {
           console.log('✅ Conectado a Socket.IO');
           if (mounted) setSocketConnected(true);
         });
 
-        newSocket.on('disconnect', () => {
+        currentSocket.on('disconnect', () => {
           console.log('❌ Desconectado de Socket.IO');
           if (mounted) setSocketConnected(false);
         });
 
-        newSocket.on('connect_error', (error) => {
+        currentSocket.on('connect_error', (error) => {
           console.error('❌ Error de conexión Socket.IO:', error);
           if (mounted) setSocketConnected(false);
         });
 
         // Eventos del servidor
-        newSocket.on('actualizar_conteo', ({ fecha, total }) => {
-          console.log('📊 Conteo actualizado:', { fecha, total });
+        currentSocket.on('actualizar_calificaciones', (data) => {
+          console.log('⭐ Nueva calificación recibida por Socket.IO:', data);
           if (mounted) {
-            setIsAnimating(true);
-            setHistoricalData(prev => ({ ...prev, [fecha]: total }));
-            setTimeout(() => {
-              if (mounted) setIsAnimating(false);
-            }, 1000);
+            loadRatings(false); // Recargar sin mostrar loading para que sea instantáneo
+            console.log('✅ Ratings actualizadas en tiempo real');
           }
         });
-
-        newSocket.on('actualizar_calificaciones', (data) => {
-          console.log('⭐ Nueva calificación recibida:', data);
-          if (mounted) loadRatings();
-        });
-
-        // Cargar datos históricos
-        try {
-          const response = await fetch(`${socketUrl}/api/usuarios-por-dia`);
-          
-          if (response.ok && mounted) {
-            const data = await response.json();
-            setHistoricalData(data);
+        
+        // Evento genérico para cualquier actualización
+        currentSocket.on('update', () => {
+          console.log('📊 Actualización general recibida');
+          if (mounted) {
+            loadRatings(false);
           }
-        } catch (error) {
-          console.error('Error cargando datos históricos:', error);
-        }
+        });
+        
+        // Escuchar cualquier evento para debugging
+        currentSocket.onAny((eventName, ...args) => {
+          console.log(`📡 Evento Socket.IO recibido: ${eventName}`, args);
+        });
 
       } catch (error) {
         console.error('Error inicializando Socket.IO:', error);
@@ -292,8 +329,9 @@ function App() {
     // Cleanup
     return () => {
       mounted = false;
-      if (socket) {
-        socket.close();
+      if (currentSocket) {
+        console.log('🔌 Cerrando conexión Socket.IO');
+        currentSocket.close();
       }
     };
   }, []); // Solo ejecutar una vez al montar
@@ -353,8 +391,17 @@ function App() {
     if (editingId) {
       await updateQuestion(editingId, { category_id: categoryId, question: questionText, answer });
       setEditingId(null);
+      // Track evento de actualización
+      trackEvent('update_question', {
+        question_id: editingId,
+        category: catToSend
+      });
     } else {
       await createQuestion({ category_id: categoryId, question: questionText, answer });
+      // Track evento de creación
+      trackEvent('create_question', {
+        category: catToSend
+      });
     }
 
     setCategory("");
@@ -382,6 +429,7 @@ function App() {
 
   const handleDelete = async (id) => {
     await deleteQuestion(id);
+    trackEvent('delete_question', { question_id: id });
     loadQuestions();
     setDeleteDialogOpen(false);
     
@@ -404,6 +452,11 @@ function App() {
   const handleToggleQuestionState = async (questionId) => {
     try {
       const updatedQuestion = await toggleQuestionState(questionId);
+      const isActive = updatedQuestion.is_active;
+      trackEvent('toggle_question_state', { 
+        question_id: questionId, 
+        new_state: isActive ? 'active' : 'inactive' 
+      });
       setQuestionStates(prev => ({
         ...prev,
         [questionId]: updatedQuestion.is_active
@@ -472,8 +525,6 @@ function App() {
           setSelectedFilterModalidad={setSelectedFilterModalidad}
           colors={colors}
           loadRatings={loadRatings}
-          historicalData={historicalData}
-          isAnimating={isAnimating}
         />;
       default:
         return <AdminPanel 
@@ -565,6 +616,7 @@ function App() {
               <ListItemButton
                 onClick={() => {
                   setActiveTab(item.id);
+                  trackEvent('switch_tab', { tab: item.id });
                   if (isMobile) setSidebarOpen(false);
                 }}
                 selected={activeTab === item.id}
@@ -613,7 +665,11 @@ function App() {
             control={
               <Switch
                 checked={isDarkMode}
-                onChange={(e) => setIsDarkMode(e.target.checked)}
+                onChange={(e) => {
+                  const newMode = e.target.checked;
+                  setIsDarkMode(newMode);
+                  trackEvent('toggle_dark_mode', { mode: newMode ? 'dark' : 'light' });
+                }}
                 sx={{
                   '& .MuiSwitch-switchBase.Mui-checked': {
                     color: colors.buttonColor,
@@ -799,10 +855,31 @@ function AdminPanel({
   capitalizeFirstLetter,
   getCategoryName
 }) {
+  // Estado para paginación de preguntas
+  const [questionsPage, setQuestionsPage] = useState(1);
+  const questionsPerPage = 8;
+
   // Filtrar preguntas por categoría seleccionada
   const filteredQuestions = selectedFilterCategory && selectedFilterCategory !== "todas"
     ? questions.filter(q => getCategoryName(q.category_id) === selectedFilterCategory)
     : questions;
+
+  // Resetear página cuando cambie el filtro de categoría
+  useEffect(() => {
+    setQuestionsPage(1);
+  }, [selectedFilterCategory]);
+
+  // Calcular páginas para preguntas
+  const totalQuestionsPages = Math.ceil(filteredQuestions.length / questionsPerPage);
+  
+  // Obtener preguntas de la página actual
+  const startIndex = (questionsPage - 1) * questionsPerPage;
+  const paginatedQuestions = filteredQuestions.slice(startIndex, startIndex + questionsPerPage);
+  
+  // Cambiar de página
+  const handleQuestionsPageChange = (event, value) => {
+    setQuestionsPage(value);
+  };
 
   return (
     <>
@@ -857,10 +934,10 @@ function AdminPanel({
           <Card
             sx={{
               mb: { xs: 3, md: 4 },
-              maxHeight: { xs: "auto", md: "500px" },
+              maxHeight: { xs: "auto", md: "auto" },
               background: colors.cardBackground,
               ...COMMON_STYLES.card,
-              overflow: "hidden"
+              overflow: "visible"
             }}
           >
             <CardContent sx={{ 
@@ -868,7 +945,7 @@ function AdminPanel({
               height: "100%",
               display: "flex",
               flexDirection: "column",
-              overflow: "auto" 
+              overflow: "visible" 
             }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
                 <AddIcon sx={{ color: colors.textPrimary, fontSize: 28 }} />
@@ -1175,9 +1252,11 @@ function AdminPanel({
                     value={selectedFilterCategory || ""}
                     label="Categoría"
                     onChange={(e) => {
-                      setSelectedFilterCategory(e.target.value);
+                      const filterValue = e.target.value;
+                      setSelectedFilterCategory(filterValue);
+                      trackEvent('filter_by_category', { category: filterValue === "todas" ? "all" : filterValue });
                       // Scroll automático a la tabla cuando se filtre
-                      if (e.target.value) {
+                      if (filterValue) {
                         setTimeout(() => {
                           const tableElement = document.getElementById('questions-table');
                           if (tableElement) {
@@ -1407,8 +1486,8 @@ function AdminPanel({
             
             {/* Vista de tabla para desktop */}
             <Box sx={{ display: { xs: 'none', md: 'block' } }}>
-              <TableContainer id="questions-table" sx={{ overflowX: 'auto' }}>
-                <Table sx={{ minWidth: 'auto' }}>
+              <TableContainer id="questions-table" sx={{ overflowX: 'hidden' }}>
+                <Table sx={{ minWidth: 'auto', width: '100%' }}>
                 <TableHead>
                     <TableRow sx={{ backgroundColor: colors.chipBackground }}>
                       {[
@@ -1435,7 +1514,7 @@ function AdminPanel({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {filteredQuestions.map((q, index) => (
+                  {paginatedQuestions.map((q, index) => (
                     <Fade in timeout={500 + index * 100} key={q.id}>
                       <TableRow
                         hover
@@ -1515,12 +1594,57 @@ function AdminPanel({
                 </TableBody>
               </Table>
             </TableContainer>
+            
+            {/* Paginador para preguntas - Desktop */}
+            {totalQuestionsPages > 1 && (
+              <Box sx={{ 
+                display: { xs: 'none', md: 'flex' },
+                justifyContent: 'center', 
+                alignItems: 'center',
+                gap: 2,
+                mt: 3, 
+                mb: 2,
+                pt: 3,
+                borderTop: `1px solid ${colors.borderColor}`
+              }}>
+                <Pagination 
+                  count={totalQuestionsPages} 
+                  page={questionsPage} 
+                  onChange={handleQuestionsPageChange}
+                  color="primary"
+                  size="large"
+                  shape="rounded"
+                  sx={{
+                    '& .MuiPaginationItem-root': {
+                      color: colors.textPrimary,
+                      border: `1px solid ${colors.borderColor}`,
+                      fontWeight: 600,
+                      '&:hover': {
+                        backgroundColor: 'rgba(169, 136, 242, 0.1)',
+                        transform: 'scale(1.1)',
+                      }
+                    },
+                    '& .Mui-selected': {
+                      backgroundColor: '#A988F2',
+                      color: 'white',
+                      border: '1px solid #A988F2',
+                      '&:hover': {
+                        backgroundColor: '#8B6BCF',
+                      }
+                    },
+                    '& .MuiPaginationItem-icon': {
+                      color: colors.textPrimary,
+                    }
+                  }}
+                />
+              </Box>
+            )}
             </Box>
 
             {/* Vista de cards para móvil */}
             <Box sx={{ display: { xs: 'block', md: 'none' } }}>
               <Stack spacing={2} sx={{ p: 2 }}>
-                {filteredQuestions.map((q, index) => (
+                {paginatedQuestions.map((q, index) => (
                   <Fade in timeout={500 + index * 100} key={q.id}>
                     <Card
                       sx={{
@@ -1620,6 +1744,51 @@ function AdminPanel({
                 ))}
               </Stack>
             </Box>
+            
+            {/* Paginador para preguntas - Móvil */}
+            {totalQuestionsPages > 1 && (
+              <Box sx={{ 
+                display: { xs: 'flex', md: 'none' },
+                justifyContent: 'center', 
+                alignItems: 'center',
+                gap: 2,
+                mt: 3, 
+                mb: 2,
+                pt: 3,
+                borderTop: `1px solid ${colors.borderColor}`
+              }}>
+                <Pagination 
+                  count={totalQuestionsPages} 
+                  page={questionsPage} 
+                  onChange={handleQuestionsPageChange}
+                  color="primary"
+                  size="large"
+                  shape="rounded"
+                  sx={{
+                    '& .MuiPaginationItem-root': {
+                      color: colors.textPrimary,
+                      border: `1px solid ${colors.borderColor}`,
+                      fontWeight: 600,
+                      '&:hover': {
+                        backgroundColor: 'rgba(169, 136, 242, 0.1)',
+                        transform: 'scale(1.1)',
+                      }
+                    },
+                    '& .Mui-selected': {
+                      backgroundColor: '#A988F2',
+                      color: 'white',
+                      border: '1px solid #A988F2',
+                      '&:hover': {
+                        backgroundColor: '#8B6BCF',
+                      }
+                    },
+                    '& .MuiPaginationItem-icon': {
+                      color: colors.textPrimary,
+                    }
+                  }}
+                />
+              </Box>
+            )}
           </Card>
         </Slide>
 
@@ -1696,10 +1865,15 @@ function RatingsTab({
   selectedFilterModalidad, 
   setSelectedFilterModalidad,
   colors, 
-  loadRatings, 
-  historicalData, 
-  isAnimating 
+  loadRatings
 }) {
+
+  // Estado para paginación
+  const [page, setPage] = useState(1);
+  const ratingsPerPage = 9; // 3 columnas x 3 filas = 9 cards por página
+  
+  // Estado para filtro por estrellas
+  const [selectedFilterStars, setSelectedFilterStars] = useState("todas");
 
   // Función para filtrar ratings
   const filteredRatings = ratings.filter(rating => {
@@ -1711,8 +1885,24 @@ function RatingsTab({
                           filterModality === "todas" || 
                           ratingModality === filterModality;
     
-    return modalityMatch;
+    // Filtro por estrellas
+    const ratingScore = Number(rating.score) || 0;
+    const starsMatch = selectedFilterStars === "todas" || ratingScore === Number(selectedFilterStars);
+    
+    return modalityMatch && starsMatch;
   });
+
+  // Calcular páginas
+  const totalPages = Math.ceil(filteredRatings.length / ratingsPerPage);
+  
+  // Obtener ratings de la página actual
+  const startIndex = (page - 1) * ratingsPerPage;
+  const paginatedRatings = filteredRatings.slice(startIndex, startIndex + ratingsPerPage);
+  
+  // Cambiar de página
+  const handlePageChange = (event, value) => {
+    setPage(value);
+  };
 
   return (
     <>
@@ -1765,16 +1955,17 @@ function RatingsTab({
           }}
         >
           <Box sx={{ p: 3, borderBottom: "1px solid rgba(0,0,0,0.1)" }}>
-            <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, alignItems: { xs: "stretch", md: "center" }, justifyContent: "space-between", gap: 2 }}>
-              <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, gap: 2, flex: 1 }}>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+              {/* Primera fila: Lista de Reseñas + Filtro Modalidad */}
+              <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, alignItems: { xs: "stretch", md: "center" }, justifyContent: "space-between", gap: 2 }}>
                 <Box sx={{ 
-                  display: "flex", 
-                  alignItems: "center", 
-                  gap: 2,
-                        backgroundColor: colors.ratingCardBackground,
+                  backgroundColor: colors.ratingCardBackground,
                   borderRadius: 3,
                   p: 2,
-                  border: `1px solid ${colors.borderColor}`
+                  border: `1px solid ${colors.borderColor}`,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 2
                 }}>
                   <GradeIcon sx={{ color: colors.textPrimary, fontSize: 28 }} />
                   <Typography
@@ -1800,28 +1991,19 @@ function RatingsTab({
                 <Box sx={{ 
                   display: "flex", 
                   alignItems: "center", 
-                  gap: { xs: 1, md: 2 },
-                  backgroundColor: colors.ratingCardBackground,
-                  borderRadius: 3,
-                  p: { xs: 1.5, md: 2 },
-                  border: `1px solid ${colors.borderColor}`,
-                  flexDirection: { xs: "column", sm: "row" }
+                  gap: 2,
+                  flexWrap: 'wrap',
+                  justifyContent: 'flex-start'
                 }}>
-                  <Typography
-                    variant="body1"
-                    sx={{
-                      fontWeight: 600,
-                      color: colors.textPrimary
-                    }}
-                  >
-                    Filtrar:
-                  </Typography>
-                  <FormControl sx={{ minWidth: { xs: "100%", sm: 120 } }}>
+                  <FormControl sx={{ minWidth: { xs: "140px", sm: 160 } }}>
                     <InputLabel sx={{ color: colors.textPrimary, fontSize: '0.875rem' }}>Modalidad</InputLabel>
                     <Select
                       value={selectedFilterModalidad || ""}
                       label="Modalidad"
-                      onChange={(e) => setSelectedFilterModalidad(e.target.value)}
+                      onChange={(e) => {
+                        setSelectedFilterModalidad(e.target.value);
+                        setPage(1); // Resetear a página 1 al cambiar filtro
+                      }}
                       renderValue={(value) => {
                         if (!value || value === "todas") return "Todas";
                         if (value === "Sede") return "Sede";
@@ -1829,14 +2011,14 @@ function RatingsTab({
                         return value;
                       }}
                       sx={{
-                        backgroundColor: colors.inputBackground,
+                        backgroundColor: colors.ratingCardBackground,
                         borderRadius: 2,
                         "& .MuiOutlinedInput-notchedOutline": {
-                          borderColor: "#B0B0B0",
-                          borderWidth: 2
+                          borderColor: colors.borderColor,
+                          borderWidth: 1.5
                         },
                         "&:hover .MuiOutlinedInput-notchedOutline": {
-                          borderColor: "#475569"
+                          borderColor: "#A988F2"
                         },
                         "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
                           borderColor: "#A988F2",
@@ -1882,7 +2064,7 @@ function RatingsTab({
                           <Typography sx={{ color: "#000000" }}>💻</Typography>
                           <Typography sx={{ color: "#000000" }}>100% Online</Typography>
                         </Box>
-                      </MenuItem>
+                    </MenuItem>
                       <MenuItem value="Sede">
                         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                           <Typography sx={{ color: "#000000" }}>🏫</Typography>
@@ -1975,86 +2157,100 @@ function RatingsTab({
                   </Typography>
                 </Box>
 
-                {/* Cuadro de usuarios nuevos por día */}
+                {/* Botón Dashboard en vivo */}
                 <Box sx={{
                   backgroundColor: colors.ratingCardBackground,
                   borderRadius: 3,
                   p: { xs: 2, md: 3 },
                   border: "1px solid rgba(255,255,255,0.1)",
                   textAlign: "center",
-                  flex: 1
-                }}>
+                  flex: 1,
+                    display: "flex", 
+                  flexDirection: "column",
+                    justifyContent: "center", 
+                    alignItems: "center", 
+                  cursor: "pointer",
+                  transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                  "&:hover": {
+                    backgroundColor: colors.inputBackground,
+                    transform: "translateY(-4px)",
+                    boxShadow: "0 8px 24px rgba(169, 136, 242, 0.3)"
+                  }
+                }}
+                onClick={() => window.open('https://analytics.google.com/analytics/web/?authuser=2#/a373069827p510642716/reports/intelligenthome?params=_u..nav%3Dmaui%26_r.0.01..metrics%3D%5B%22activeUsers%22%5D&collectionId=12360626756', '_blank')}
+                >
+                  <Box sx={{ 
+                    display: "flex", 
+                    justifyContent: "center", 
+                    alignItems: "center",
+                    mb: 2,
+                    height: { xs: '3rem', md: '4rem' },
+                    width: '100%'
+                  }}>
+                    <Typography sx={{ 
+                      color: "#FF6B35", 
+                      fontSize: { xs: '2.5rem', md: '3.5rem' },
+                      animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite"
+                    }}>
+                      📊
+                    </Typography>
+                  </Box>
                   <Typography variant="h6" sx={{ 
                     color: colors.textPrimary, 
                     fontWeight: 600, 
                     mb: 1,
                     fontSize: { xs: '1rem', md: '1.25rem' }
                   }}>
-                    Usuarios Nuevos
-                  </Typography>
-                  <Box sx={{ 
-                    display: "flex", 
-                    justifyContent: "center", 
-                    alignItems: "center", 
-                    mb: 1,
-                    height: { xs: '3rem', md: '4rem' },
-                    width: '100%'
-                  }}>
-                    <Typography 
-                      variant="h2" 
-                      className={isAnimating ? 'digital-counter-animating' : ''}
-                      sx={{ 
-                        color: colors.textPrimary, 
-                        fontWeight: 700,
-                        fontFamily: "'Courier New', 'Monaco', 'Consolas', monospace",
-                        fontSize: { xs: '2.5rem', sm: '3.2rem', md: '4rem' },
-                        letterSpacing: '0.1em',
-                        transform: isAnimating ? 'translateY(-100%)' : 'translateY(0)',
-                        transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-                        lineHeight: 1,
-                        fontVariantNumeric: 'tabular-nums',
-                        textAlign: 'center',
-                        ...(isAnimating && {
-                          animation: 'slideDown 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards'
-                        })
-                      }}
-                    >
-                      {historicalData && typeof historicalData === 'object' ? 
-                        Object.values(historicalData).reduce((sum, count) => sum + count, 0) : 0}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ 
-                    display: "flex", 
-                    justifyContent: "center", 
-                    gap: { xs: 0.3, md: 0.5 }, 
-                    mb: 1 
-                  }}>
-                    <Typography sx={{ 
-                      color: "#4CAF50", 
-                      fontSize: { xs: '1.2rem', md: '1.5rem' } 
-                    }}>
-                      🎓
-                    </Typography>
-                  </Box>
-                  <Typography variant="caption" sx={{ 
-                    color: colors.textPrimary, 
-                    opacity: 0.7,
-                    fontSize: { xs: '0.75rem', md: '0.875rem' }
-                  }}>
-                    {historicalData && typeof historicalData === 'object' && Object.keys(historicalData).length > 0 ? 
-                      Object.keys(historicalData).sort().pop() : 
-                      new Date().toLocaleDateString('es-CL')
-                    }
+                    Dashboard en vivo
                   </Typography>
                   <Typography variant="caption" sx={{ 
                     color: colors.textPrimary, 
-                    opacity: 0.5, 
-                    display: 'block', 
-                    mt: 0.5,
+                    opacity: 0.6,
                     fontSize: { xs: '0.7rem', md: '0.75rem' }
                   }}>
-                    (sesiones nuevas)
+                    Ver estadísticas en tiempo real
                   </Typography>
+                </Box>
+              </Box>
+              
+              {/* Filtro por estrellas - Estrellas clicables */}
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 1,
+                pt: 2
+              }}>
+                <Typography variant="caption" sx={{ 
+                  color: colors.textPrimary,
+                  opacity: 0.7,
+                  fontSize: '0.8rem'
+                }}>
+                  Filtrar:
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
+                  {[...Array(5)].map((_, i) => (
+                    <Box
+                      key={i}
+                      onClick={() => {
+                        setSelectedFilterStars(i + 1 === Number(selectedFilterStars) ? "todas" : String(i + 1));
+                        setPage(1);
+                      }}
+                      sx={{
+                        cursor: 'pointer',
+                        fontSize: '1.3rem',
+                        transition: 'all 0.2s ease',
+                        transform: selectedFilterStars === String(i + 1) ? 'scale(1.2)' : 'scale(1)',
+                        filter: selectedFilterStars === String(i + 1) ? 'drop-shadow(0 0 3px rgba(255, 215, 0, 0.8))' : 'none',
+                        opacity: selectedFilterStars === "todas" ? 0.5 : (Number(selectedFilterStars) > i ? 1 : 0.3),
+                        '&:hover': {
+                          transform: 'scale(1.15)',
+                          filter: 'drop-shadow(0 0 3px rgba(255, 215, 0, 0.6))'
+                        }
+                      }}
+                    >
+                      ⭐
+                    </Box>
+                  ))}
                 </Box>
               </Box>
             </Box>
@@ -2078,49 +2274,74 @@ function RatingsTab({
                 </Typography>
               </Box>
             ) : (
-              <Stack spacing={2}>
-                {filteredRatings.map((rating, index) => (
-                  <Fade in timeout={200 + index * 50} key={rating.id}>
+              <>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
+                    gap: 2,
+                    width: '100%'
+                  }}
+                >
+                  {paginatedRatings.map((rating, index) => (
+                    <Fade in timeout={400 + index * 150} key={rating.id}>
                     <Card
                       sx={{
-                        p: 3,
-                        backgroundColor: colors.inputBackground,
-                        borderRadius: 3,
+                          p: 1.5,
+                          height: '200px',
+                          background: `linear-gradient(145deg, ${colors.inputBackground} 0%, rgba(169, 136, 242, 0.05) 100%)`,
+                          borderRadius: 2,
                         border: `1px solid ${colors.borderColor}`,
-                        transition: "all 0.3s ease",
+                          transition: "all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+                          boxShadow: "0 4px 15px rgba(0,0,0,0.08)",
+                          position: 'relative',
+                          overflow: 'hidden',
+                          display: 'flex',
+                          flexDirection: 'column',
+                              '&::before': {
+                                content: '""',
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                height: '3px',
+                                background: 'linear-gradient(90deg, #A988F2 0%, #8B6BCF 100%)'
+                              },
                         "&:hover": {
-                          backgroundColor: "rgba(169, 136, 242, 0.1)",
-                          transform: "translateY(-2px)",
-                          boxShadow: "0 8px 25px rgba(0,0,0,0.2)"
-                        }
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                transform: "translateY(-8px) scale(1.02)",
+                                boxShadow: "0 12px 35px rgba(169, 136, 242, 0.25)",
+                                borderColor: '#A988F2'
+                              }
+                            }}
+                          >
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.8, height: '100%' }}>
                         {/* Header con nombre y fecha */}
-                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 1 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
                             <Box sx={{ 
                               width: 40, 
                               height: 40, 
                               borderRadius: '50%', 
-                              backgroundColor: '#A988F2',
+                              background: 'linear-gradient(135deg, #A988F2 0%, #8B6BCF 100%)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              color: colors.textPrimary,
-                              fontWeight: 600,
-                              fontSize: '1.1rem'
+                              color: 'white',
+                              fontWeight: 700,
+                              fontSize: '1.1rem',
+                              boxShadow: '0 4px 12px rgba(169, 136, 242, 0.3)',
+                              flexShrink: 0
                             }}>
                               {rating.nombre ? rating.nombre.charAt(0).toUpperCase() : 'E'}
                             </Box>
-                            <Box>
-                              <Typography variant="h6" sx={{ fontWeight: 600, color: colors.textPrimary, mb: 0.5 }}>
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600, color: colors.textPrimary, fontSize: '1rem', mb: 0.25, lineHeight: 1.2 }}>
                                 {rating.nombre || 'Estudiante sin nombre'}
                               </Typography>
-                              <Typography variant="caption" sx={{ color: colors.textPrimary, opacity: 0.7 }}>
+                              <Typography variant="caption" sx={{ color: colors.textPrimary, opacity: 0.6, fontSize: '0.85rem' }}>
                                 {rating.date ? (() => {
                                   const date = new Date(rating.date);
-                                  date.setHours(date.getHours() - 3); // Ajuste para Chile (UTC-3)
+                                  date.setHours(date.getHours() - 3);
                                   return date.toLocaleString('es-CL', { 
                                     timeZone: 'America/Santiago',
                                     year: 'numeric',
@@ -2133,7 +2354,7 @@ function RatingsTab({
                                 })() : 
                                  rating.created_at ? (() => {
                                    const date = new Date(rating.created_at);
-                                   date.setHours(date.getHours() - 3); // Ajuste para Chile (UTC-3)
+                                   date.setHours(date.getHours() - 3);
                                    return date.toLocaleString('es-CL', { 
                                      timeZone: 'America/Santiago',
                                      year: 'numeric',
@@ -2146,7 +2367,7 @@ function RatingsTab({
                                  })() : 
                                  rating.createdAt ? (() => {
                                    const date = new Date(rating.createdAt);
-                                   date.setHours(date.getHours() - 3); // Ajuste para Chile (UTC-3)
+                                   date.setHours(date.getHours() - 3);
                                    return date.toLocaleString('es-CL', { 
                                      timeZone: 'America/Santiago',
                                      year: 'numeric',
@@ -2160,59 +2381,117 @@ function RatingsTab({
                               </Typography>
                             </Box>
                           </Box>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography variant="body2" sx={{ color: colors.textPrimary, opacity: 0.8 }}>
-                              {(rating.modality || rating.modalidad || rating.Modality?.type || 'Sin modalidad').trim()}
-                            </Typography>
-                            <Box sx={{ 
-                              width: 24, 
-                              height: 24, 
-                              borderRadius: '50%', 
-                              backgroundColor: '#A988F2',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center'
-                            }}>
-                              <Typography sx={{ color: colors.textPrimary, fontSize: '0.8rem' }}>⭐</Typography>
-                            </Box>
-                          </Box>
+                          <Chip
+                            label={(rating.modality || rating.modalidad || rating.Modality?.type || 'Sin modalidad').trim()}
+                            size="small"
+                            sx={{
+                              backgroundColor: 'rgba(169, 136, 242, 0.15)',
+                              color: colors.textPrimary,
+                              fontWeight: 600,
+                              fontSize: '0.85rem',
+                              height: '24px',
+                              border: '1px solid rgba(169, 136, 242, 0.3)',
+                              flexShrink: 0
+                            }}
+                          />
                         </Box>
                         
                         {/* Estrellas de calificación */}
-                        <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexShrink: 0 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 700, color: colors.textPrimary, fontSize: '1rem' }}>
+                            {rating.score}/5
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 0.1 }}>
                           {[...Array(5)].map((_, i) => (
                             <Typography key={i} sx={{ 
                               color: i < (Number(rating.score) || 0) ? '#FFD700' : colors.textPrimary, 
-                              opacity: i < (Number(rating.score) || 0) ? 1 : 0.3,
-                              fontSize: '1.2rem'
+                                opacity: i < (Number(rating.score) || 0) ? 1 : 0.2,
+                                fontSize: '1.2rem',
+                                filter: i < (Number(rating.score) || 0) ? 'drop-shadow(0 0 2px rgba(255, 215, 0, 0.5))' : 'none'
                             }}>
                               ⭐
                             </Typography>
                           ))}
+                          </Box>
                         </Box>
                         
                         {/* Comentario */}
-                        {rating.comment && (
-                          <Typography variant="body2" sx={{ 
-                            color: colors.textPrimary, 
-                            opacity: 0.9,
-                            lineHeight: 1.5
-                          }}>
+                        {rating.comment ? (
+                          <Typography 
+                            variant="body2" 
+                            sx={{ 
+                              color: colors.textPrimary, 
+                              opacity: 0.9,
+                              lineHeight: 1.5,
+                              fontSize: '0.95rem',
+                              flex: 1,
+                              wordBreak: 'break-word',
+                              overflowWrap: 'break-word'
+                            }}
+                          >
                             "{rating.comment}"
                           </Typography>
+                        ) : (
+                          <Box sx={{ flex: 1 }} />
                         )}
                         
                         {/* Información adicional */}
-                        <Box sx={{ display: 'flex', gap: 2, opacity: 0.7 }}>
-                          <Typography variant="caption" sx={{ color: colors.textPrimary }}>
+                        <Box sx={{ display: 'flex', gap: 0.5, opacity: 0.7, flexShrink: 0 }}>
+                          <Typography variant="caption" sx={{ color: colors.textPrimary, fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             📧 {rating.correo || 'Sin correo'}
                           </Typography>
                         </Box>
                       </Box>
                     </Card>
-                  </Fade>
-                ))}
-              </Stack>
+                      </Fade>
+                  ))}
+                </Box>
+                
+                {/* Paginación */}
+                {totalPages > 1 && (
+                  <Box sx={{ 
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    alignItems: 'center',
+                    gap: 2,
+                    mt: 3, 
+                    mb: 2,
+                    pt: 3,
+                    borderTop: `1px solid ${colors.borderColor}`
+                  }}>
+                    <Pagination 
+                      count={totalPages} 
+                      page={page} 
+                      onChange={handlePageChange}
+                      color="primary"
+                      size="large"
+                      shape="rounded"
+                      sx={{
+                        '& .MuiPaginationItem-root': {
+                          color: colors.textPrimary,
+                          border: `1px solid ${colors.borderColor}`,
+                          fontWeight: 600,
+                          '&:hover': {
+                            backgroundColor: 'rgba(169, 136, 242, 0.1)',
+                            transform: 'scale(1.1)',
+                          }
+                        },
+                        '& .Mui-selected': {
+                          backgroundColor: '#A988F2',
+                          color: 'white',
+                          border: '1px solid #A988F2',
+                          '&:hover': {
+                            backgroundColor: '#8B6BCF',
+                          }
+                        },
+                        '& .MuiPaginationItem-icon': {
+                          color: colors.textPrimary,
+                        }
+                      }}
+                    />
+                  </Box>
+                )}
+              </>
             )}
           </Box>
         </Card>

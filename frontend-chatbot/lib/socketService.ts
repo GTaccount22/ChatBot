@@ -84,14 +84,14 @@ class SocketService {
       this.socket.on('disconnect', (reason) => {
         this.isConnected = false;
         this.isConnecting = false;
-        console.log('❌ Socket desconectado:', reason);
+        // console.log('❌ Socket desconectado:', reason);
       });
 
       this.socket.on('connect_error', (error) => {
         this.isConnected = false;
         this.isConnecting = false;
-            console.log('❌ Error de conexión:', error.message);
-            console.log('🔍 Error completo:', error);
+            // console.log('❌ Error de conexión:', error.message);
+            // console.log('🔍 Error completo:', error);
       });
 
       this.socket.on('reconnect', (attemptNumber) => {
@@ -102,7 +102,7 @@ class SocketService {
 
       this.socket.on('reconnect_error', (error) => {
         this.isConnecting = false;
-        console.log('❌ Error de reconexión:', error.message);
+        // console.log('❌ Error de reconexión:', error.message);
       });
 
       this.socket.on('reconnect_failed', () => {

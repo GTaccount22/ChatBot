@@ -12,18 +12,19 @@ let globalEventos = {
 };
 
 export interface NuevoUsuarioData {
-  user_id: number;
+  rut: string;  // Cambiar user_id a rut (string)
 }
 
 export interface NuevaCalificacionData {
-  user_id: number;
+  rut: string;  // Cambiar user_id a rut (string)
   score: number;
   comment?: string;
   date: string;
 }
 
 export interface TutorialCompletadoData {
-  user_id: number;
+  user_id: number;  // Cambiar a rut si necesario
+  rut?: string;     // Agregar opcionalmente
   date: string;
   is_first_tutorial: boolean;
 }

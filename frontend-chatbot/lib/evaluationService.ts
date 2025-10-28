@@ -42,15 +42,15 @@ export class EvaluationService {
 
       console.log('💾 Insertando evaluación en base de datos...');
       
-      // Obtener el ID del usuario actual
-      const userId = sessionData.user.id;
-      console.log('👤 User ID:', userId);
+      // Obtener el RUT del usuario actual
+      const userRut = sessionData.user.user_metadata?.rut || sessionData.user.id;
+      console.log('👤 User RUT:', userRut);
       
       // Obtener la modalidad del usuario directamente desde User
       const { data: userData, error: userError } = await supabase
         .from('User')
         .select('modality_id')
-        .eq('id', userId)
+        .eq('rut', userRut)
         .single();
       
       if (userError || !userData) {
@@ -60,16 +60,20 @@ export class EvaluationService {
       
       console.log('✅ Modalidad del usuario:', userData.modality_id);
       
-      // Insertar evaluación sin modality_id (se obtendrá desde User con JOIN)
+      // Insertar evaluación con rut en lugar de user_id
+      // Agregar timestamp para que cada calificación sea única
+      const timestamp = new Date().toISOString();
       const { data, error } = await supabase
         .from('Rating')
-        .insert([{
-          user_id: userId,
+        .insert({
+          rut: userRut,
           score: evaluationData.calificacion,
           comment: evaluationData.comentario || null,
-          date: new Date().toISOString()
-        }])
+          date: timestamp
+        })
         .select();
+      
+      console.log('📅 Timestamp usado:', timestamp);
 
       if (error) {
         console.error('❌ Error insertando evaluación:', error);

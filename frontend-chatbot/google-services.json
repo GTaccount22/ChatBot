@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "458304435790",
+    "project_id": "ducobots",
+    "storage_bucket": "ducobots.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:458304435790:android:4e50b42712a210ef91751f",
+        "android_client_info": {
+          "package_name": "com.PoweRanger.chatbot"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBmDfdleVZWn2BVX4z2kgiJ28mW7Y15N8s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

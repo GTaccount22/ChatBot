@@ -1,32 +1,31 @@
 import { Redirect } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from "../contexts/ThemeContext";
 import { AuthService } from "../lib/authService";
+import { GA4Service } from "../lib/ga4Service";
 import { SamsungInputUtils } from "../lib/inputUtils";
-import { socketService } from "../lib/socketService";
 
 interface User {
-  id: number;
+  rut: string;  // Primary Key
   first_name: string;
   last_name: string;
   institutional_email: string;
-  rut: string;
   gender: boolean;
   phone: string;
   created_at: string;
@@ -41,7 +40,6 @@ export default function App() {
   const [loadingLogin, setLoadingLogin] = useState(false);
   const [loadingSession, setLoadingSession] = useState(true);
   const [step, setStep] = useState<'rut' | 'success'>('rut');
-  const usuariosEnviadosRef = useRef<Set<string>>(new Set());
 
   // Responsividad
   const { width, height } = Dimensions.get('window');
@@ -161,6 +159,8 @@ export default function App() {
 
   useEffect(() => {
     checkExistingSession();
+    // Registrar evento de apertura de app en GA4
+    GA4Service.logAppOpen();
   }, []);
 
   const checkExistingSession = async () => {
@@ -170,11 +170,10 @@ export default function App() {
       if (isValid && session?.user) {
         setIsLoggedIn(true);
         const user: User = {
-          id: session.user.id || 0,
+          rut: session.user.user_metadata?.rut || session.user.id || '',
           first_name: session.user.user_metadata?.first_name || '',
           last_name: session.user.user_metadata?.last_name || '',
           institutional_email: session.user.email || '',
-          rut: session.user.user_metadata?.rut || '',
           gender: session.user.user_metadata?.gender || false,
           phone: session.user.user_metadata?.phone || '',
           created_at: session.user.created_at || '',
@@ -191,35 +190,15 @@ export default function App() {
   };
 
   const handleRutChange = (text: string) => {
-    // Protección contra duplicación en Samsung
-    if (text === rut) return;
+    // Limpiar el texto antes de formatear para evitar duplicación
+    const cleanText = text.replace(/[^0-9kK]/g, '');
     
-    const formattedRut = SamsungInputUtils.formatRut(text);
-    setRut(formattedRut);
-  };
-
-  // Función protegida para enviar nuevo usuario solo una vez por usuario
-  const enviarNuevoUsuario = async (userId: number) => {
-    // Verificar si este usuario específico ya fue enviado
-    if (usuariosEnviadosRef.current.has(userId.toString())) {
-      console.log(`⚠️ Usuario ${userId} ya fue enviado, evitando duplicado`);
-      return;
-    }
+    // Solo actualizar si el texto realmente cambió
+    const formattedRut = SamsungInputUtils.formatRut(cleanText);
     
-    // Marcar este usuario como enviado
-    usuariosEnviadosRef.current.add(userId.toString());
-    console.log(`👤 Enviando nuevo usuario: ${userId}`);
-    
-    const usuarioConectado = socketService.enviarNuevoUsuario({
-      user_id: userId
-    });
-
-    if (usuarioConectado) {
-      console.log(`✅ Usuario ${userId} enviado exitosamente`);
-    } else {
-      console.log(`❌ Error al enviar usuario ${userId}`);
-      // Remover del set si falló para permitir reintento
-      usuariosEnviadosRef.current.delete(userId.toString());
+    // Solo actualizar si el nuevo RUT es diferente al anterior
+    if (formattedRut !== rut) {
+      setRut(formattedRut);
     }
   };
 
@@ -239,8 +218,8 @@ export default function App() {
         setIsLoggedIn(true);
         setStep('success');
         
-        // Enviar evento de nuevo usuario conectado
-        await enviarNuevoUsuario(user.id);
+        // Registrar login en GA4 (analytics reemplaza el contador de usuarios)
+        GA4Service.logLogin('rut', user.rut);
         
         Alert.alert("¡Bienvenido!", "Has iniciado sesión correctamente");
       } else {
@@ -257,20 +236,11 @@ export default function App() {
   const logout = async () => {
     setLoadingLogin(true);
     try {
-      // Obtener el ID del usuario actual antes de hacer logout
-      const currentUserId = userData?.id;
-      
       await AuthService.logout();
       setIsLoggedIn(false);
       setStep('rut');
       setRut('');
       setUserData(null);
-      
-      // Remover solo este usuario del set de usuarios enviados
-      if (currentUserId) {
-        usuariosEnviadosRef.current.delete(currentUserId.toString());
-        console.log(`🔄 Usuario ${currentUserId} removido del set de usuarios enviados`);
-      }
     } catch (error) {
       console.error("❌ Error cerrando sesión:", error);
     } finally {
@@ -328,17 +298,19 @@ export default function App() {
             placeholderTextColor="#999"
             value={rut}
             onChangeText={handleRutChange}
-            keyboardType="default"
+            keyboardType={Platform.OS === 'ios' ? 'default' : 'visible-password'}
             maxLength={12}
             autoCapitalize="none"
             autoCorrect={false}
-            autoComplete="off"
             spellCheck={false}
-            selectTextOnFocus={true}
+            selectTextOnFocus={false}
             underlineColorAndroid="transparent"
             returnKeyType="done"
-            importantForAutofill="no"
             textContentType="none"
+            dataDetectorTypes="none"
+            editable={true}
+            caretHidden={false}
+            contextMenuHidden={true}
           />
         </View>
 

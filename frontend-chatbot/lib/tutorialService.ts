@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient';
 
 export interface TutorialStatus {
   id: number;
-  user_id: number;
+  rut: string;  // Cambiar de user_id a rut (TEXT)
   seen: boolean;
   date: string;
 }
@@ -21,13 +21,13 @@ export class TutorialService {
         return false;
       }
 
-      const userId = sessionData.user.id;
-      console.log('🔍 Verificando tutorial para usuario:', userId);
+      const userRut = sessionData.user.user_metadata?.rut || sessionData.user.id;
+      console.log('🔍 Verificando tutorial para usuario:', userRut);
 
       const { data, error } = await supabase
         .from('Tutorial_status')
         .select('seen')
-        .eq('user_id', userId)
+        .eq('rut', userRut)
         .eq('seen', true)
         .limit(1);
 
@@ -58,13 +58,13 @@ export class TutorialService {
         return { success: false, error: 'Usuario no autenticado' };
       }
 
-      const userId = sessionData.user.id;
+      const userRut = sessionData.user.user_metadata?.rut || sessionData.user.id;
 
       // Primero intentar insertar
       const { error: insertError } = await supabase
         .from('Tutorial_status')
         .insert({
-          user_id: userId,
+          rut: userRut,
           seen: true,
           date: new Date().toISOString()
         });
@@ -77,7 +77,7 @@ export class TutorialService {
             seen: true,
             date: new Date().toISOString()
           })
-          .eq('user_id', userId);
+          .eq('rut', userRut);
 
         if (updateError) {
           console.error('Error updating tutorial status:', updateError);
@@ -106,16 +106,16 @@ export class TutorialService {
         return { success: false, error: 'Usuario no autenticado' };
       }
 
-      const userId = sessionData.user.id;
+      const userRut = sessionData.user.user_metadata?.rut || sessionData.user.id;
 
       const { error } = await supabase
         .from('Tutorial_status')
         .upsert({
-          user_id: userId,
+          rut: userRut,
           seen: false,
           date: new Date().toISOString()
         }, {
-          onConflict: 'user_id'
+          onConflict: 'rut'
         });
 
       if (error) {

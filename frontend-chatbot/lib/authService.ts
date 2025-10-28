@@ -3,11 +3,10 @@ import { supabase, supabaseAdmin } from './supabaseClient';
 
 // Interfaces de TypeScript
 interface User {
-  id: number;
+  rut: string;  // Primary Key
   first_name: string;
   last_name: string;
   institutional_email: string;
-  rut: string;
   gender: boolean;
   phone: string;
   created_at: string;
@@ -57,7 +56,7 @@ export class AuthService {
       const cleanRut = this.normalizeRut(rut);
       const { data, error } = await supabase
         .from('User')
-        .select('id, first_name, last_name, institutional_email, rut, gender, phone, created_at, modality_id')
+        .select('rut, first_name, last_name, institutional_email, gender, phone, created_at, modality_id')
         .eq('rut', cleanRut)
         .single();
 
@@ -130,7 +129,7 @@ export class AuthService {
         refresh_token: 'mock_refresh_' + Math.random().toString(36).slice(-8),
         expires_at: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24 horas
         user: {
-          id: user.id,
+          id: user.rut,  // Usar rut como ID ahora
           email: user.institutional_email,
           user_metadata: {
             first_name: user.first_name,

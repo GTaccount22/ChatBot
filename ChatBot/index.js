@@ -52,84 +52,14 @@ const userStates = new Map();
 const io = new Server(server, {
   cors: {
     origin: [
-      "http://localhost:3000",  // Web React
+      "http://localhost:3000", 
+      "http://localhost:3001", // Web React
       "http://localhost:8081",  // App Móvil Expo
       "exp://2w08npi-victorz14-8081.exp.direct" //app expo link
     ],
     methods: ["GET", "POST"],
   },
 });
-
-// ========================================
-// 📊 SISTEMA DE CONTEO DE USUARIOS
-// ========================================
-// Ruta del archivo para conteo de usuarios
-const conteoFile = path.join(__dirname, 'conteo_usuarios.json');
-
-// Contador de usuarios nuevos por día
-let usuariosPorDia = {};
-
-// ========================================
-// 📁 FUNCIONES DE ARCHIVO Y FECHA
-// ========================================
-// Función para cargar datos
-function cargarDatos() {
-  try {
-    if (fs.existsSync(conteoFile)) {
-      const data = fs.readFileSync(conteoFile, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.error('Error cargando datos:', error);
-  }
-  return {};
-}
-
-// Función para guardar datos
-function guardarDatos() {
-  try {
-    fs.writeFileSync(conteoFile, JSON.stringify(usuariosPorDia, null, 2));
-  } catch (error) {
-    console.error('Error guardando datos:', error);
-  }
-}
-
-// Cargar datos al iniciar
-usuariosPorDia = cargarDatos();
-
-// Set para evitar duplicados (debounce)
-const usuariosProcesados = new Set();
-
-// Obtener fecha actual YYYY-MM-DD en zona horaria de Chile
-function getFechaHoy() {
-  const ahora = new Date();
-  // Chile está en UTC-3 (o UTC-4 en horario de verano)
-  const chileTime = new Date(ahora.getTime() - (3 * 60 * 60 * 1000)); // UTC-3
-  return chileTime.toISOString().split('T')[0]; // YYYY-MM-DD
-}
-
-function verificarReinicioDiario() {
-  const hoy = getFechaHoy();
-  const ultimaFecha = Object.keys(usuariosPorDia).sort().pop();
-  
-  // Solo mostrar log si hay un cambio o si es la primera vez
-  if (!ultimaFecha || ultimaFecha !== hoy) {
-    console.log(`🕐 Verificando fecha: Hoy=${hoy}, Última=${ultimaFecha}`);
-  }
-  
-  // Si la última fecha no es hoy, reiniciar contadores
-  if (ultimaFecha && ultimaFecha !== hoy) {
-    console.log('🔄 Nuevo día detectado, reiniciando contadores...');
-    usuariosPorDia = {}; // Reiniciar contadores
-    guardarDatos();
-  }
-}
-
-// Ejecutar verificación cada 30 segundos para detectar cambio de fecha casi inmediatamente
-setInterval(verificarReinicioDiario, 30 * 1000); // 30 segundos
-
-// Verificación inicial al arrancar el servidor
-verificarReinicioDiario();
 
 // ========================================
 // ✅ VALIDACIÓN DE VARIABLES
@@ -402,7 +332,7 @@ app.delete("/api/categories/:id", async (req, res) => {
 // GET /api/users -> Listar todos los usuarios
 app.get("/api/users", async (req, res) => {
   try {
-    const { data, error } = await supabase.from("User").select("*").order("id", { ascending: true });
+    const { data, error } = await supabase.from("User").select("*").order("rut", { ascending: true });
     if (error) throw error;
     res.json(data);
   } catch (err) {
@@ -411,11 +341,11 @@ app.get("/api/users", async (req, res) => {
   }
 });
 
-// GET /api/users/:id -> Obtener un usuario específico
-app.get("/api/users/:id", async (req, res) => {
-  const { id } = req.params;
+// GET /api/users/:rut -> Obtener un usuario específico por RUT
+app.get("/api/users/:rut", async (req, res) => {
+  const { rut } = req.params;
   try {
-    const { data, error } = await supabase.from("User").select("*").eq("id", id).single();
+    const { data, error } = await supabase.from("User").select("*").eq("rut", rut).single();
     if (error) throw error;
     res.json(data);
   } catch (err) {
@@ -454,12 +384,12 @@ app.post("/api/users", async (req, res) => {
   }
 });
 
-// PUT /api/users/:id -> Editar usuario existente
-app.put("/api/users/:id", async (req, res) => {
-  const { id } = req.params;
+// PUT /api/users/:rut -> Editar usuario existente
+app.put("/api/users/:rut", async (req, res) => {
+  const { rut: rutParam } = req.params;
   const { rut, institutional_email, gender, first_name, last_name, phone, modality_id } = req.body;
   try {
-    const { data, error } = await supabase.from("User").update({ rut, institutional_email, gender, first_name, last_name, phone, modality_id }).eq("id", id).select();
+    const { data, error } = await supabase.from("User").update({ rut, institutional_email, gender, first_name, last_name, phone, modality_id }).eq("rut", rutParam).select();
     if (error) throw error;
     res.json(data[0]);
   } catch (err) {
@@ -468,11 +398,11 @@ app.put("/api/users/:id", async (req, res) => {
   }
 });
 
-// DELETE /api/users/:id -> Eliminar usuario
-app.delete("/api/users/:id", async (req, res) => {
-  const { id } = req.params;
+// DELETE /api/users/:rut -> Eliminar usuario
+app.delete("/api/users/:rut", async (req, res) => {
+  const { rut } = req.params;
   try {
-    const { data, error } = await supabase.from("User").delete().eq("id", id).select();
+    const { data, error } = await supabase.from("User").delete().eq("rut", rut).select();
     if (error) throw error;
     res.json({ message: "Usuario eliminado", deleted: data[0] });
   } catch (err) {
@@ -592,11 +522,11 @@ app.get("/api/tutorial-status/:id", async (req, res) => {
   }
 });
 
-// GET /api/tutorial-status/user/:user_id -> Obtener estado de tutorial por usuario
-app.get("/api/tutorial-status/user/:user_id", async (req, res) => {
-  const { user_id } = req.params;
+// GET /api/tutorial-status/user/:rut -> Obtener estado de tutorial por usuario
+app.get("/api/tutorial-status/user/:rut", async (req, res) => {
+  const { rut } = req.params;
   try {
-    const { data, error } = await supabase.from("Tutorial_status").select("*").eq("user_id", user_id).single();
+    const { data, error } = await supabase.from("Tutorial_status").select("*").eq("rut", rut).single();
     if (error) throw error;
     res.json(data);
   } catch (err) {
@@ -607,19 +537,19 @@ app.get("/api/tutorial-status/user/:user_id", async (req, res) => {
 
 // POST /api/tutorial-status -> Crear nuevo estado de tutorial
 app.post("/api/tutorial-status", async (req, res) => {
-  const { user_id, seen } = req.body;
+  const { rut, seen } = req.body;
 
   // Validación básica
-  if (!user_id || seen === undefined) {
+  if (!rut || seen === undefined) {
     console.log("❌ Campos faltantes:", req.body);
-    return res.status(400).json({ error: "Los campos user_id y seen son requeridos" });
+    return res.status(400).json({ error: "Los campos rut y seen son requeridos" });
   }
 
   try {
-    console.log("Intentando crear estado de tutorial:", { user_id, seen });
+    console.log("Intentando crear estado de tutorial:", { rut, seen });
     const { data, error } = await supabase
       .from("Tutorial_status")
-      .insert([{ user_id, seen, date: new Date().toISOString() }])
+      .insert([{ rut, seen, date: new Date().toISOString() }])
       .select();
 
     if (error) {
@@ -638,9 +568,9 @@ app.post("/api/tutorial-status", async (req, res) => {
 // PUT /api/tutorial-status/:id -> Editar estado de tutorial existente
 app.put("/api/tutorial-status/:id", async (req, res) => {
   const { id } = req.params;
-  const { user_id, seen } = req.body;
+  const { rut, seen } = req.body;
   try {
-    const { data, error } = await supabase.from("Tutorial_status").update({ user_id, seen }).eq("id", id).select();
+    const { data, error } = await supabase.from("Tutorial_status").update({ rut, seen }).eq("id", id).select();
     if (error) throw error;
     res.json(data[0]);
   } catch (err) {
@@ -668,46 +598,62 @@ app.delete("/api/tutorial-status/:id", async (req, res) => {
 app.get("/api/ratings", async (req, res) => {
   try {
     console.log("📊 Solicitando calificaciones...");
-    const { data, error } = await supabase
+    
+    // Primero obtener los ratings
+    const { data: ratingsData, error: ratingsError } = await supabase
       .from("Rating")
-      .select(`
-        id,
-        score,
-        comment,
-        date,
-        user_id,
-        User(
-          id,
-          first_name,
-          last_name,
-          institutional_email,
-          rut,
-          modality_id,
-          Modality(
-            id_modality,
-            type
-          )
-        )
-      `)
+      .select("id, score, comment, date, rut")
       .order("date", { ascending: false });
     
-    if (error) {
-      console.error("❌ Error de Supabase:", error);
-      throw error;
+    if (ratingsError) {
+      console.error("❌ Error obteniendo ratings:", ratingsError);
+      throw ratingsError;
     }
     
-    // Transformar los datos para que coincidan con el frontend
-    const transformedData = data.map(r => ({
-      id: r.id,
-      score: r.score,          
-      comment: r.comment,        
-      date: r.date,            
-      user_id: r.user_id,
-      nombre: r.User ? `${r.User.first_name || ''} ${r.User.last_name || ''}`.trim() || 'Estudiante sin nombre' : 'Estudiante sin nombre',
-      correo: r.User?.institutional_email || 'Sin correo',
-      rut: r.User?.rut || 'Sin RUT',
-      modalidad: r.User?.Modality?.type || 'Sin modalidad'
-    }));
+    // Luego obtener los usuarios para cada rating
+    const transformedData = await Promise.all(
+      ratingsData.map(async (r) => {
+        let userData = null;
+        let modalityData = null;
+        
+        if (r.rut) {
+          const { data: user, error: userError } = await supabase
+            .from("User")
+            .select("rut, first_name, last_name, institutional_email, modality_id")
+            .eq("rut", r.rut)
+            .single();
+          
+          if (!userError && user) {
+            userData = user;
+            
+            // Obtener modalidad si existe
+            if (user.modality_id) {
+              const { data: modality, error: modalityError } = await supabase
+                .from("Modality")
+                .select("id_modality, type")
+                .eq("id_modality", user.modality_id)
+                .single();
+              
+              if (!modalityError && modality) {
+                modalityData = modality;
+              }
+            }
+          }
+        }
+        
+        return {
+          id: r.id,
+          score: r.score,
+          comment: r.comment,
+          date: r.date,
+          rut: r.rut,
+          nombre: userData ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || 'Estudiante sin nombre' : 'Estudiante sin nombre',
+          correo: userData?.institutional_email || 'Sin correo',
+          rut_usuario: userData?.rut || 'Sin RUT',
+          modalidad: modalityData?.type || 'Sin modalidad'
+        };
+      })
+    );
     
     console.log(`✅ Calificaciones obtenidas: ${transformedData.length} registros`);
     res.json(transformedData);
@@ -719,19 +665,19 @@ app.get("/api/ratings", async (req, res) => {
 
 // POST /api/ratings -> Crear nueva calificación
 app.post("/api/ratings", async (req, res) => {
-  const { user_id, score, comment } = req.body;
+  const { rut, score, comment } = req.body;
 
   // Validación básica
-  if (!user_id || !score) {
+  if (!rut || !score) {
     console.log("❌ Campos faltantes:", req.body);
-    return res.status(400).json({ error: "Los campos user_id y score son requeridos" });
+    return res.status(400).json({ error: "Los campos rut y score son requeridos" });
   }
 
   try {
-    console.log("Intentando crear calificación:", { user_id, score, comment });
+    console.log("Intentando crear calificación:", { rut, score, comment });
     const { data, error } = await supabase
       .from("Rating")
-      .insert([{ user_id, score, comment, date: new Date().toISOString() }])
+      .insert([{ rut, score, comment, date: new Date().toISOString() }])
       .select();
 
     if (error) {
@@ -740,6 +686,53 @@ app.post("/api/ratings", async (req, res) => {
     }
 
     console.log("✅ Calificación creada:", data[0]);
+
+    // Obtener datos completos del usuario para enviar en tiempo real
+    let userData = null;
+    let modalityData = null;
+    
+    if (data[0].rut) {
+      const { data: user, error: userError } = await supabase
+        .from("User")
+        .select("rut, first_name, last_name, institutional_email, modality_id")
+        .eq("rut", data[0].rut)
+        .single();
+      
+      if (!userError && user) {
+        userData = user;
+        
+        // Obtener modalidad si existe
+        if (user.modality_id) {
+          const { data: modality, error: modalityError } = await supabase
+            .from("Modality")
+            .select("id_modality, type")
+            .eq("id_modality", user.modality_id)
+            .single();
+          
+          if (!modalityError && modality) {
+            modalityData = modality;
+          }
+        }
+      }
+    }
+
+    // Crear objeto completo para enviar en tiempo real
+    const ratingComplete = {
+      id: data[0].id,
+      score: data[0].score,
+      comment: data[0].comment,
+      date: data[0].date,
+      rut: data[0].rut,
+      nombre: userData ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || 'Estudiante sin nombre' : 'Estudiante sin nombre',
+      correo: userData?.institutional_email || 'Sin correo',
+      rut_usuario: userData?.rut || 'Sin RUT',
+      modalidad: modalityData?.type || 'Sin modalidad'
+    };
+
+    // Emitir evento de Socket.IO para actualizar en tiempo real
+    io.emit("actualizar_calificaciones", ratingComplete);
+    console.log("📢 Evento emitido para actualizar calificaciones en tiempo real");
+
     res.status(201).json(data[0]);
   } catch (err) {
     console.error("Excepción al crear calificación:", err);
@@ -750,9 +743,9 @@ app.post("/api/ratings", async (req, res) => {
 // PUT /api/ratings/:id -> Editar calificación existente
 app.put("/api/ratings/:id", async (req, res) => {
   const { id } = req.params;
-  const { user_id, score, comment } = req.body;
+  const { rut, score, comment } = req.body;
   try {
-    const { data, error } = await supabase.from("Rating").update({ user_id, score, comment }).eq("id", id).select();
+    const { data, error } = await supabase.from("Rating").update({ rut, score, comment }).eq("id", id).select();
     if (error) throw error;
     res.json(data[0]);
   } catch (err) {
@@ -802,48 +795,9 @@ app.get("/", (req, res) => {
   });
 });
 
-// ========================================
-// 📊 ENDPOINTS DE SOCKET.IO
-// ========================================
-// Endpoint para consultar conteos
+// Endpoint temporal para usuarios-por-dia (sistema de conteo eliminado)
 app.get("/api/usuarios-por-dia", (req, res) => {
-  res.json(usuariosPorDia);
-});
-
-// Endpoint para verificar fecha actual
-app.get("/api/fecha-actual", (req, res) => {
-  const hoy = getFechaHoy();
-  const ultimaFecha = Object.keys(usuariosPorDia).sort().pop();
-  const ahoraUTC = new Date().toISOString();
-  const ahoraChile = new Date(new Date().getTime() - (3 * 60 * 60 * 1000)).toISOString();
-  
-  res.json({
-    fecha_hoy_chile: hoy,
-    ultima_fecha_registrada: ultimaFecha,
-    necesita_reinicio: ultimaFecha !== hoy,
-    hora_utc: ahoraUTC,
-    hora_chile: ahoraChile,
-    contadores_actuales: usuariosPorDia
-  });
-});
-
-// Endpoint para resetear contador del día actual (solo para desarrollo)
-app.post("/api/reset-hoy", (req, res) => {
-  const hoy = getFechaHoy();
-  usuariosPorDia[hoy] = 0;
-  guardarDatos();
-  
-  // Limpiar usuarios procesados del día
-  const keysToDelete = Array.from(usuariosProcesados).filter(key => 
-    key.includes(hoy) || key.includes(`nuevo_`) && key.includes(hoy)
-  );
-  keysToDelete.forEach(key => usuariosProcesados.delete(key));
-  
-  res.json({ 
-    mensaje: `Contador del ${hoy} reseteado a 0`,
-    fecha: hoy,
-    total: usuariosPorDia[hoy]
-  });
+  res.json({});
 });
 
 // Endpoint para obtener la URL de ngrok
@@ -872,13 +826,10 @@ app.get("/api/ngrok-url", (req, res) => {
 
 // Endpoint para debug - ver estado del servidor
 app.get("/api/debug", (req, res) => {
-  const hoy = getFechaHoy();
   res.json({
-    fecha_actual: hoy,
-    contadores: usuariosPorDia,
-    usuarios_procesados: Array.from(usuariosProcesados),
     conexiones_activas: io.engine.clientsCount,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    status: "Servidor funcionando correctamente"
   });
 });
 
@@ -1047,7 +998,7 @@ async function handleQuestionInCategory(from, categoryData, questionNumber) {
   // Enviar mensaje separado con opciones de navegación
   await sendMessage(
     from,
-    `🔙 Escribe *Menú* para volver al inicio.\n\nEn caso de que no estés conforme con esta respuesta haz click acá https://experienciavivo.duoc.cl/alumnos/solicitudes`
+    `🔙 Escribe *Menú* para volver al inicio.\n\nEn caso de no estar conforme puedes acercarte al centro académico.`
   );
 }
 
@@ -1087,55 +1038,67 @@ io.on("connection", (socket) => {
   console.log("🔌 Cliente conectado:", socket.id);
   console.log("🌐 Origen de conexión:", socket.handshake.headers.origin);
 
-  // Nuevo usuario (solo para logging, NO cuenta)
+  // Nuevo usuario (solo para logging)
   socket.on("nuevo_usuario", (data) => {
     console.log("👤 Nuevo usuario registrado:", data);
-    // NO contamos aquí para evitar duplicados
-    // El conteo real se hace en tutorial_completado
   });
 
-  // Nueva calificación (solo notificar)
-  socket.on("nueva_calificacion", (data) => {
-    io.emit("actualizar_calificaciones", data);
-    console.log("⭐ Nueva calificación automática:", data);
+  // Nueva calificación - obtener datos completos antes de emitir
+  socket.on("nueva_calificacion", async (data) => {
+    try {
+      // Obtener datos completos del usuario si hay rut
+      let userData = null;
+      let modalityData = null;
+      
+      if (data.rut) {
+        const { data: user, error: userError } = await supabase
+          .from("User")
+          .select("rut, first_name, last_name, institutional_email, modality_id")
+          .eq("rut", data.rut)
+          .single();
+        
+        if (!userError && user) {
+          userData = user;
+          
+          // Obtener modalidad si existe
+          if (user.modality_id) {
+            const { data: modality, error: modalityError } = await supabase
+              .from("Modality")
+              .select("id_modality, type")
+              .eq("id_modality", user.modality_id)
+              .single();
+            
+            if (!modalityError && modality) {
+              modalityData = modality;
+            }
+          }
+        }
+      }
+
+      // Crear objeto completo para enviar
+      const ratingComplete = {
+        id: data.id,
+        score: data.score,
+        comment: data.comment,
+        date: data.date,
+        rut: data.rut,
+        nombre: userData ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || 'Estudiante sin nombre' : 'Estudiante sin nombre',
+        correo: userData?.institutional_email || 'Sin correo',
+        rut_usuario: userData?.rut || 'Sin RUT',
+        modalidad: modalityData?.type || 'Sin modalidad'
+      };
+
+      // Emitir evento completo a todos los clientes
+      io.emit("actualizar_calificaciones", ratingComplete);
+      console.log("⭐ Nueva calificación emitida en tiempo real:", ratingComplete);
+    } catch (err) {
+      console.error("❌ Error procesando nueva calificación:", err);
+    }
   });
 
-  // Modificar el evento tutorial_completado
+  // Tutorial completado (solo para logging)
   socket.on("tutorial_completado", (data) => {
     console.log('🎓 Tutorial completado recibido:', data);
-    console.log('🔍 Datos recibidos:', JSON.stringify(data, null, 2));
-    
-    // Usar siempre la fecha actual para la clave única
-    const hoy = getFechaHoy();
-    const key = `${data.usuario_id}_${hoy}`;
-    
-    console.log('🔑 Clave generada:', key);
-    console.log('📅 Fecha actual:', hoy);
-    console.log('👥 Usuarios ya procesados:', Array.from(usuariosProcesados));
-    
-    if (usuariosProcesados.has(key)) {
-      console.log('⚠️ Usuario ya procesado, ignorando:', key);
-      return;
-    }
-    
-    // Solo contar si es el primer tutorial del usuario
-    if (data.es_primer_tutorial) {
-      // Marcar como procesado ANTES de contar
-      usuariosProcesados.add(key);
-      console.log('✅ Procesando usuario nuevo:', key);
-      
-      if (!usuariosPorDia[hoy]) usuariosPorDia[hoy] = 0;
-      usuariosPorDia[hoy]++;
-      guardarDatos();
-      
-      console.log('📊 Nuevo conteo:', { fecha: hoy, total: usuariosPorDia[hoy] });
-      
-      // Emitir actualización
-      io.emit("actualizar_conteo", { fecha: hoy, total: usuariosPorDia[hoy] });
-    } else {
-      console.log('ℹ️ Tutorial repetido, no se cuenta:', key);
-      console.log('❌ es_primer_tutorial es false:', data.es_primer_tutorial);
-    }
   });
 
   socket.on("disconnect", () => {

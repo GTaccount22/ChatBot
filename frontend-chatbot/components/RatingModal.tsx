@@ -1,21 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
-  Animated,
-  Dimensions,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View
+    Alert,
+    Animated,
+    Dimensions,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View
 } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { AuthService } from '../lib/authService';
 import { EvaluationData, EvaluationService } from '../lib/evaluationService';
+import { GA4Service } from '../lib/ga4Service';
 import { SamsungInputUtils, useProtectedInput } from '../lib/inputUtils';
 import { Modality, ModalityService } from '../lib/modalityService';
 import { socketService } from '../lib/socketService';
@@ -191,7 +192,7 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
         console.log('👤 currentUser.id:', currentUser?.id);
         
         const calificacionEnviada = socketService.enviarNuevaCalificacion({
-          user_id: currentUser?.id || 0,
+          rut: currentUser?.rut || '',
           score: satisfaction,
           comment: comments.trim() || undefined,
           date: new Date().toISOString()
@@ -200,6 +201,9 @@ export default function RatingModal({ visible, onClose }: RatingModalProps) {
         if (calificacionEnviada) {
           // Calificación enviada exitosamente
         }
+        
+        // Registrar en GA4
+        GA4Service.logRating(satisfaction, currentUser?.rut);
 
         Alert.alert(
           '¡Gracias!', 
