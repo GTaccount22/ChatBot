@@ -255,8 +255,8 @@ function App() {
     
     const initializeSocket = async () => {
       try {
-        // URL de producción para Socket.IO
-        const socketUrl = 'https://chatbot-4gaq.onrender.com';
+        // URL de ngrok para Socket.IO
+        const socketUrl = 'https://exilic-unconditionally-channing.ngrok-free.dev';
         
         console.log(`🔄 Conectando Socket.IO a: ${socketUrl}`);
         

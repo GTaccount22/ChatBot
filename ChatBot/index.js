@@ -28,6 +28,8 @@ app.use(cors({
   origin: [
     "https://chatbot-4gaq.onrender.com",
     "http://chatbot-4gaq.onrender.com",
+    "https://exilic-unconditionally-channing.ngrok-free.dev",
+    "http://exilic-unconditionally-channing.ngrok-free.dev",
     "http://localhost:3000",
     "http://localhost:3001",
     "http://localhost:8081",
@@ -63,6 +65,8 @@ const io = new Server(server, {
     origin: [
       "https://chatbot-4gaq.onrender.com", // Producción - Frontend React
       "http://chatbot-4gaq.onrender.com", // Producción sin SSL
+      "https://exilic-unconditionally-channing.ngrok-free.dev", // Ngrok URL
+      "http://exilic-unconditionally-channing.ngrok-free.dev", // Ngrok URL sin SSL
       "http://localhost:3000", // Desarrollo local
       "http://localhost:3001", 
       "http://localhost:8081",  // App Móvil Expo
