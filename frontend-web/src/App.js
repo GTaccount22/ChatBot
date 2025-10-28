@@ -255,13 +255,13 @@ function App() {
     
     const initializeSocket = async () => {
       try {
-        // URL de ngrok para Socket.IO
-        const socketUrl = 'https://exilic-unconditionally-channing.ngrok-free.dev';
+        // URL de producción para Socket.IO
+        const socketUrl = 'https://chatbot-4gaq.onrender.com';
         
         console.log(`🔄 Conectando Socket.IO a: ${socketUrl}`);
         
         currentSocket = io(socketUrl, {
-          transports: ["polling", "websocket"], // Permitir ambos, pero preferir polling
+          transports: ["polling", "websocket"],
           timeout: 15000,
           reconnection: true,
           reconnectionAttempts: 10,
@@ -269,11 +269,7 @@ function App() {
           reconnectionDelayMax: 10000,
           upgrade: true,
           rememberUpgrade: true,
-          extraHeaders: {
-            'ngrok-skip-browser-warning': 'true'
-          },
-          forceNew: true,
-          path: undefined // No usar /socket.io/ path con ngrok
+          forceNew: true
         });
         
         if (!mounted) return;

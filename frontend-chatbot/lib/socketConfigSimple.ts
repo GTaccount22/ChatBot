@@ -2,19 +2,19 @@
 export const SOCKET_ENABLED = true;
 
 // URLs del servidor - Configuración con fallback
-const NGROK_URL = "https://exilic-unconditionally-channing.ngrok-free.dev";
+const PRODUCTION_URL = "https://chatbot-4gaq.onrender.com";
 const LOCAL_URL = "http://localhost:5000";
 
 // Función para detectar qué URL usar
 const detectarURLActiva = async (): Promise<string> => {
   try {
-    console.log('🔍 Probando conexión con ngrok...');
+    console.log('🔍 Probando conexión con servidor de producción...');
     
     // Crear AbortController para timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000);
     
-    const response = await fetch(`${NGROK_URL}/api/usuarios-por-dia`, {
+    const response = await fetch(`${PRODUCTION_URL}/api/usuarios-por-dia`, {
       method: 'HEAD',
       signal: controller.signal
     });
@@ -22,11 +22,11 @@ const detectarURLActiva = async (): Promise<string> => {
     clearTimeout(timeoutId);
     
     if (response.ok) {
-      console.log('✅ ngrok disponible');
-      return NGROK_URL;
+      console.log('✅ Servidor de producción disponible');
+      return PRODUCTION_URL;
     }
   } catch (error) {
-    console.log('❌ ngrok no disponible:', error);
+    console.log('❌ Servidor de producción no disponible:', error);
   }
   
   console.log('🔄 Usando localhost como fallback');
@@ -44,10 +44,10 @@ export const getAPIURL = async (): Promise<string> => {
 };
 
 // URLs por defecto (para casos síncronos)
-export const SOCKET_URL = NGROK_URL;
-export const API_URL = `${NGROK_URL}/api/usuarios-por-dia`;
+export const SOCKET_URL = PRODUCTION_URL;
+export const API_URL = `${PRODUCTION_URL}/api/usuarios-por-dia`;
 
-// Configuración de conexión optimizada para ngrok con límites de reconexión
+// Configuración de conexión optimizada para Render con límites de reconexión
 export const SOCKET_OPTIONS = {
   transports: ["websocket"], // Forzar WebSocket
   timeout: 20000,
@@ -61,9 +61,6 @@ export const SOCKET_OPTIONS = {
   rememberUpgrade: false,
   pingTimeout: 60000,
   pingInterval: 25000,
-  // Opciones específicas para ngrok
   withCredentials: false,
-  extraHeaders: {
-    'ngrok-skip-browser-warning': 'true'
-  }
+  extraHeaders: {}
 };

@@ -24,7 +24,16 @@ dotenv.config();
 // 🚀 CONFIGURACIÓN DEL SERVIDOR
 // ========================================
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    "https://chatbot-4gaq.onrender.com",
+    "http://chatbot-4gaq.onrender.com",
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:8081",
+  ],
+  credentials: true
+}));
 app.use(bodyParser.json());
 
 // Crear servidor HTTP
@@ -52,10 +61,12 @@ const userStates = new Map();
 const io = new Server(server, {
   cors: {
     origin: [
-      "http://localhost:3000", 
-      "http://localhost:3001", // Web React
+      "https://chatbot-4gaq.onrender.com", // Producción - Frontend React
+      "http://chatbot-4gaq.onrender.com", // Producción sin SSL
+      "http://localhost:3000", // Desarrollo local
+      "http://localhost:3001", 
       "http://localhost:8081",  // App Móvil Expo
-      "exp://2w08npi-victorz14-8081.exp.direct" //app expo link
+      "exp://2w08npi-victorz14-8081.exp.direct", //app expo link
     ],
     methods: ["GET", "POST"],
   },
