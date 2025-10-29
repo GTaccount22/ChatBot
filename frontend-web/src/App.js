@@ -174,11 +174,16 @@ function App() {
   const loadQuestions = async () => {
     try {
       const data = await getQuestions();
+      console.log('📋 Data recibida en loadQuestions:', data);
+      console.log('📋 Type:', typeof data);
+      console.log('📋 Is array?', Array.isArray(data));
       // Asegurar que siempre sea un array
-      setQuestions(Array.isArray(data) ? data : []);
+      const questionsArray = Array.isArray(data) ? data : [];
+      console.log('📋 Estableciendo questions:', questionsArray.length, 'preguntas');
+      setQuestions(questionsArray);
       // Las categorías se cargan por separado con loadCategories()
     } catch (error) {
-      console.error('Error loading questions:', error);
+      console.error('❌ Error loading questions:', error);
       // En caso de error, establecer un array vacío como fallback
       setQuestions([]);
     }
@@ -196,10 +201,15 @@ function App() {
         setLoading(true);
       }
       const data = await getRatings();
+      console.log('⭐ Data recibida en loadRatings:', data);
+      console.log('⭐ Type:', typeof data);
+      console.log('⭐ Is array?', Array.isArray(data));
       // Asegurar que siempre sea un array
-      setRatings(Array.isArray(data) ? data : []);
+      const ratingsArray = Array.isArray(data) ? data : [];
+      console.log('⭐ Estableciendo ratings:', ratingsArray.length, 'calificaciones');
+      setRatings(ratingsArray);
     } catch (error) {
-      console.error('Error loading ratings:', error);
+      console.error('❌ Error loading ratings:', error);
       // En caso de error, establecer un array vacío como fallback
       setRatings([]);
     } finally {
@@ -213,10 +223,15 @@ function App() {
   const loadCategories = async () => {
     try {
       const data = await getCategories();
+      console.log('🗂️ Data recibida en loadCategories:', data);
+      console.log('🗂️ Type:', typeof data);
+      console.log('🗂️ Is array?', Array.isArray(data));
       // Asegurar que siempre sea un array
-      setCategories(Array.isArray(data) ? data : []);
+      const categoriesArray = Array.isArray(data) ? data : [];
+      console.log('🗂️ Estableciendo categories:', categoriesArray.length, 'categorías');
+      setCategories(categoriesArray);
     } catch (error) {
-      console.error('Error loading categories:', error);
+      console.error('❌ Error loading categories:', error);
       // En caso de error, establecer un array vacío como fallback
       setCategories([]);
     }

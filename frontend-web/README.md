@@ -13,6 +13,8 @@ Este es el frontend del sistema de gestión de preguntas y respuestas con sideba
 
 ### Variables de Entorno
 
+#### Desarrollo Local
+
 Crea un archivo `.env` en la raíz del proyecto con:
 
 ```env
@@ -20,6 +22,79 @@ REACT_APP_API_URL=http://localhost:4000
 ```
 
 **Nota**: El backend debe estar corriendo en el puerto 4000. El backend usa Supabase como base de datos y está configurado en `../ChatBot/questionsApi.js`.
+
+#### Producción (Render)
+
+Para desplegar en Render, configura la variable de entorno en tu servicio de frontend:
+
+1. **En Render Dashboard**:
+   - Ve a tu servicio de frontend
+   - Settings → Environment Variables
+   - Agrega: `REACT_APP_API_URL` = `https://tu-backend.onrender.com`
+   - ⚠️ **IMPORTANTE**: Asegúrate de usar la URL completa del backend (sin trailing slash)
+
+2. **Ejemplo de valores**:
+   ```
+   REACT_APP_API_URL=https://mi-backend.onrender.com
+   ```
+
+3. **Verificación**:
+   - Al iniciar la aplicación, verás en la consola del navegador:
+     ```
+     🔗 API_URL configurada: https://mi-backend.onrender.com
+     🔗 Modo: PRODUCCIÓN (Render)
+     ```
+
+**⚠️ Importante**: 
+- La URL debe ser la del backend en Render, NO la del frontend
+- No debe terminar con `/`
+- Todas las peticiones se hacen relativas al `baseURL` configurado en `src/services/api.js`
+- Axios automáticamente combina `baseURL + ruta relativa` = URL completa
+
+#### Verificación en Producción
+
+Después de configurar la variable de entorno en Render y hacer redeploy:
+
+1. **Abre tu aplicación** en el navegador (ej: `https://chatbot-4gaq.onrender.com`)
+
+2. **Abre la consola del navegador** (F12 → Console)
+
+3. **Verifica los logs al iniciar**:
+   ```
+   🔗 API_URL configurada: https://tu-backend.onrender.com
+   🔗 REACT_APP_API_URL: https://tu-backend.onrender.com
+   🔗 Modo: PRODUCCIÓN (Render)
+   ```
+
+4. **Verifica los requests** cuando se cargan los datos:
+   ```
+   🌐 Request: GET https://tu-backend.onrender.com/api/categories
+      baseURL: https://tu-backend.onrender.com
+      url relativa: /api/categories
+   ✅ Response: GET /api/categories { status: 200, isArray: true, dataLength: 5 }
+   ```
+
+5. **Si ves errores**, verifica:
+   - ¿La URL apunta correctamente al backend? (debe ser diferente del frontend)
+   - ¿El backend está corriendo en Render?
+   - ¿El endpoint `/api/categories` existe en tu backend?
+   - ¿Hay problemas de CORS? (debe estar configurado en el backend)
+
+#### Cómo funciona internamente
+
+```javascript
+// En src/services/api.js
+const API_URL = "https://tu-backend.onrender.com";
+const api = axios.create({ baseURL: API_URL });
+
+// En src/services/categoryService.js
+export const getCategories = async () => {
+  // Esta ruta relativa se combina con baseURL
+  const res = await api.get('/api/categories');
+  // Axios internamente hace: API_URL + '/api/categories'
+  // Resultado: https://tu-backend.onrender.com/api/categories
+};
+```
 
 ### Instalación
 

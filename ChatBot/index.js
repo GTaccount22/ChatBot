@@ -127,14 +127,20 @@ async function sendMessage(to, text) {
 // ========================================
 // 📋 ENDPOINTS CRUD PARA BASE DE DATOS
 // ========================================
+// IMPORTANTE: Todos los endpoints GET que devuelven listas retornan arrays DIRECTAMENTE
+// Formato de respuesta: [] (array directo, NO { success: true, data: [] })
+// Los endpoints GET/:id devuelven objetos directos: {} (NO { success: true, data: {} })
+// Los endpoints POST/PUT devuelven el objeto creado/actualizado: {} (NO { success: true, data: {} })
 
 // ------------------- ENDPOINTS CRUD PARA QUESTIONS -------------------
 
 // GET /api/questions -> Listar todas las preguntas
+// Retorna: [] (array directo)
 app.get("/api/questions", async (req, res) => {
   try {
     const { data, error } = await supabase.from("Questions").select("*").order("id", { ascending: true });
     if (error) throw error;
+    // Devolver array directo - el frontend hace .map(res.data) esperando un array
     res.json(Array.isArray(data) ? data : []);
   } catch (err) {
     console.error(err);
