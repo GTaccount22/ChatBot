@@ -173,12 +173,15 @@ function App() {
 
   const loadQuestions = async () => {
     try {
-    const data = await getQuestions();
-    setQuestions(data);
-    // Las categorías se cargan por separado con loadCategories()
-  } catch (error) {
-    console.error('Error loading questions:', error);
-  }
+      const data = await getQuestions();
+      // Asegurar que siempre sea un array
+      setQuestions(Array.isArray(data) ? data : []);
+      // Las categorías se cargan por separado con loadCategories()
+    } catch (error) {
+      console.error('Error loading questions:', error);
+      // En caso de error, establecer un array vacío como fallback
+      setQuestions([]);
+    }
   };
 
   // Función helper para obtener el nombre de la categoría
@@ -193,9 +196,11 @@ function App() {
         setLoading(true);
       }
       const data = await getRatings();
-      setRatings(data);
+      // Asegurar que siempre sea un array
+      setRatings(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error loading ratings:', error);
+      // En caso de error, establecer un array vacío como fallback
       setRatings([]);
     } finally {
       if (showLoading) {
@@ -208,9 +213,12 @@ function App() {
   const loadCategories = async () => {
     try {
       const data = await getCategories();
-      setCategories(data);
+      // Asegurar que siempre sea un array
+      setCategories(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error loading categories:', error);
+      // En caso de error, establecer un array vacío como fallback
+      setCategories([]);
     }
   };
 

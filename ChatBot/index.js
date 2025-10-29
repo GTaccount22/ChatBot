@@ -1135,27 +1135,6 @@ io.on("connection", (socket) => {
 // ========================================
 const PORT = process.env.PORT || 5000;
 
-// Función para obtener la URL de ngrok desde su API local
-async function getNgrokUrlFromAPI(maxAttempts = 10, delay = 1000) {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      const response = await axios.get('http://127.0.0.1:4040/api/tunnels', {
-        timeout: 2000
-      });
-      const tunnels = response.data.tunnels;
-      if (tunnels && tunnels.length > 0) {
-        return tunnels[0].public_url;
-      }
-    } catch (error) {
-      if (attempt < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
-      throw new Error('No se pudo conectar a la API de ngrok después de varios intentos');
-    }
-  }
-  throw new Error('No se encontraron túneles activos');
-}
 
 // Función para iniciar ngrok
 async function startNgrok() {

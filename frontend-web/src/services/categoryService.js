@@ -3,12 +3,23 @@ import api from './api';
 export const getCategories = async () => {
   try {
     const res = await api.get('/api/categories');
-    return res.data;
+    // Manejar diferentes formatos de respuesta de la API
+    // Si res.data es directamente un array, devolverlo
+    if (Array.isArray(res.data)) {
+      return res.data;
+    }
+    // Si res.data.categories existe y es un array, devolverlo
+    if (Array.isArray(res.data.categories)) {
+      return res.data.categories;
+    }
+    // Si no, devolver un array vacío
+    return [];
   } catch (error) {
     console.error('Error fetching categories:', error);
-    throw error;
+    return []; // fallback seguro
   }
 };
+
 
 export const createCategory = async (category) => {
   try {
