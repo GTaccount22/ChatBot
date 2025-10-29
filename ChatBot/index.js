@@ -132,10 +132,10 @@ app.get("/api/questions", async (req, res) => {
   try {
     const { data, error } = await supabase.from("Questions").select("*").order("id", { ascending: true });
     if (error) throw error;
-    res.json(data);
+    res.json(Array.isArray(data) ? data : []);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Error al obtener preguntas" });
+    res.status(500).json([]); // Devolver array vacío en caso de error
   }
 });
 
@@ -148,10 +148,10 @@ app.get("/api/questions/active", async (req, res) => {
       .eq("is_active", true)
       .order("id", { ascending: true });
     if (error) throw error;
-    res.json(data);
+    res.json(Array.isArray(data) ? data : []);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Error al obtener preguntas activas" });
+    res.status(500).json([]); // Devolver array vacío en caso de error
   }
 });
 
@@ -265,10 +265,10 @@ app.get("/api/categories", async (req, res) => {
   try {
     const { data, error } = await supabase.from("Category").select("*").order("id", { ascending: true });
     if (error) throw error;
-    res.json(data);
+    res.json(Array.isArray(data) ? data : []);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Error al obtener categorías" });
+    res.status(500).json([]); // Devolver array vacío en caso de error
   }
 });
 
@@ -349,10 +349,10 @@ app.get("/api/users", async (req, res) => {
   try {
     const { data, error } = await supabase.from("User").select("*").order("rut", { ascending: true });
     if (error) throw error;
-    res.json(data);
+    res.json(Array.isArray(data) ? data : []);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Error al obtener usuarios" });
+    res.status(500).json([]); // Devolver array vacío en caso de error
   }
 });
 
@@ -433,10 +433,10 @@ app.get("/api/modalities", async (req, res) => {
   try {
     const { data, error } = await supabase.from("Modality").select("*").order("id_modality", { ascending: true });
     if (error) throw error;
-    res.json(data);
+    res.json(Array.isArray(data) ? data : []);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Error al obtener modalidades" });
+    res.status(500).json([]); // Devolver array vacío en caso de error
   }
 });
 
@@ -517,10 +517,10 @@ app.get("/api/tutorial-status", async (req, res) => {
   try {
     const { data, error } = await supabase.from("Tutorial_status").select("*").order("id", { ascending: true });
     if (error) throw error;
-    res.json(data);
+    res.json(Array.isArray(data) ? data : []);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Error al obtener estados de tutorial" });
+    res.status(500).json([]); // Devolver array vacío en caso de error
   }
 });
 
@@ -671,10 +671,10 @@ app.get("/api/ratings", async (req, res) => {
     );
     
     console.log(`✅ Calificaciones obtenidas: ${transformedData.length} registros`);
-    res.json(transformedData);
+    res.json(Array.isArray(transformedData) ? transformedData : []);
   } catch (err) {
     console.error("❌ Error al obtener calificaciones:", err);
-    res.status(500).json({ error: "Error al obtener calificaciones", details: err.message });
+    res.status(500).json([]); // Devolver array vacío en caso de error
   }
 });
 
@@ -808,11 +808,6 @@ app.get("/", (req, res) => {
     socketio: "Socket.IO integrado",
     timestamp: new Date().toISOString(),
   });
-});
-
-// Endpoint temporal para usuarios-por-dia (sistema de conteo eliminado)
-app.get("/api/usuarios-por-dia", (req, res) => {
-  res.json({});
 });
 
 // Endpoint para obtener la URL de ngrok

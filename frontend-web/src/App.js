@@ -174,17 +174,18 @@ function App() {
 
   const loadQuestions = async () => {
     try {
-    const data = await getQuestions();
-    setQuestions(data);
-    // Las categorías se cargan por separado con loadCategories()
-  } catch (error) {
-    console.error('Error loading questions:', error);
-  }
+      const data = await getQuestions();
+      // Asegurar que siempre sea un array
+      setQuestions(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error loading questions:', error);
+      setQuestions([]); // Asegurar array vacío en caso de error
+    }
   };
 
   // Función helper para obtener el nombre de la categoría
   const getCategoryName = (categoryId) => {
-    const category = categories.find(cat => cat.id === categoryId);
+    const category = (Array.isArray(categories) ? categories : []).find(cat => cat.id === categoryId);
     return category ? category.name_category : 'Sin categoría';
   };
 
@@ -194,10 +195,11 @@ function App() {
         setLoading(true);
       }
       const data = await getRatings();
-      setRatings(data);
+      // Asegurar que siempre sea un array
+      setRatings(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error loading ratings:', error);
-      setRatings([]);
+      setRatings([]); // Asegurar array vacío en caso de error
     } finally {
       if (showLoading) {
         setLoading(false);
@@ -209,9 +211,11 @@ function App() {
   const loadCategories = async () => {
     try {
       const data = await getCategories();
-      setCategories(data);
+      // Asegurar que siempre sea un array
+      setCategories(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error loading categories:', error);
+      setCategories([]); // Asegurar array vacío en caso de error
     }
   };
 
@@ -371,7 +375,7 @@ function App() {
       }
     } else {
       // Buscar el ID de la categoría existente
-      const foundCategory = categories.find(cat => cat.name_category === catToSend);
+      const foundCategory = (Array.isArray(categories) ? categories : []).find(cat => cat.name_category === catToSend);
       if (!foundCategory) {
         alert('Categoría no encontrada');
         // Limpiar campos automáticamente
@@ -411,7 +415,7 @@ function App() {
   const handleEdit = (q) => {
     setEditingId(q.id);
     // Buscar la categoría por ID en la lista de categorías
-    const foundCategory = categories.find(cat => cat.id === q.category_id);
+    const foundCategory = (Array.isArray(categories) ? categories : []).find(cat => cat.id === q.category_id);
     if (foundCategory) {
       setCategory(foundCategory.name_category);
       setNewCategory("");
@@ -857,20 +861,23 @@ function AdminPanel({
 
   // Filtrar preguntas por categoría seleccionada
   const filteredQuestions = selectedFilterCategory && selectedFilterCategory !== "todas"
-    ? questions.filter(q => getCategoryName(q.category_id) === selectedFilterCategory)
-    : questions;
+    ? (Array.isArray(questions) ? questions : []).filter(q => getCategoryName(q.category_id) === selectedFilterCategory)
+    : (Array.isArray(questions) ? questions : []);
 
   // Resetear página cuando cambie el filtro de categoría
   useEffect(() => {
     setQuestionsPage(1);
   }, [selectedFilterCategory]);
 
+  // Asegurar que filteredQuestions sea un array
+  const safeFilteredQuestions = Array.isArray(filteredQuestions) ? filteredQuestions : [];
+  
   // Calcular páginas para preguntas
-  const totalQuestionsPages = Math.ceil(filteredQuestions.length / questionsPerPage);
+  const totalQuestionsPages = Math.ceil(safeFilteredQuestions.length / questionsPerPage);
   
   // Obtener preguntas de la página actual
   const startIndex = (questionsPage - 1) * questionsPerPage;
-  const paginatedQuestions = filteredQuestions.slice(startIndex, startIndex + questionsPerPage);
+  const paginatedQuestions = safeFilteredQuestions.slice(startIndex, startIndex + questionsPerPage);
   
   // Cambiar de página
   const handleQuestionsPageChange = (event, value) => {
@@ -1020,7 +1027,7 @@ function AdminPanel({
                       }
                     }}
                   >
-                    {categories.map((cat) => (
+                    {(categories || []).map((cat) => (
                       <MenuItem key={cat.id} value={cat.name_category}>
                         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                           <CategoryIcon sx={{ fontSize: 16, color: colors.textPrimary }} />
@@ -1322,7 +1329,7 @@ function AdminPanel({
                     <MenuItem value="todas">
                       <em style={{ color: colors.textPrimary }}>Todas las categorías</em>
                     </MenuItem>
-                    {categories.map((cat) => (
+                    {(categories || []).map((cat) => (
                       <MenuItem key={cat.id} value={cat.name_category}>
                         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                           <CategoryIcon sx={{ fontSize: 16, color: colors.textPrimary }} />
@@ -1337,7 +1344,7 @@ function AdminPanel({
                   variant="outlined"
                   disabled={!selectedFilterCategory || selectedFilterCategory === "todas"}
                   onClick={() => {
-                    const categoryToDelete = categories.find(cat => cat.name_category === selectedFilterCategory);
+                    const categoryToDelete = (Array.isArray(categories) ? categories : []).find(cat => cat.name_category === selectedFilterCategory);
                     if (categoryToDelete) {
                       if (window.confirm(`¿Estás seguro de que quieres eliminar la categoría "${selectedFilterCategory}"?\n\nEsto eliminará todas las preguntas de esta categoría.`)) {
                         handleDeleteCategory(categoryToDelete.id);
@@ -1510,7 +1517,7 @@ function AdminPanel({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {paginatedQuestions.map((q, index) => (
+                  {(paginatedQuestions || []).map((q, index) => (
                     <Fade in timeout={500 + index * 100} key={q.id}>
                       <TableRow
                         hover
@@ -1640,7 +1647,7 @@ function AdminPanel({
             {/* Vista de cards para móvil */}
             <Box sx={{ display: { xs: 'block', md: 'none' } }}>
               <Stack spacing={2} sx={{ p: 2 }}>
-                {paginatedQuestions.map((q, index) => (
+                {(paginatedQuestions || []).map((q, index) => (
                   <Fade in timeout={500 + index * 100} key={q.id}>
                     <Card
                       sx={{
@@ -1872,7 +1879,7 @@ function RatingsTab({
   const [selectedFilterStars, setSelectedFilterStars] = useState("todas");
 
   // Función para filtrar ratings
-  const filteredRatings = ratings.filter(rating => {
+  const filteredRatings = (Array.isArray(ratings) ? ratings : []).filter(rating => {
     // Filtro por modalidad - buscar en diferentes campos posibles
     const ratingModality = (rating.modality || rating.modalidad || rating.Modality?.type || '').toString().trim();
     const filterModality = selectedFilterModalidad?.trim() || '';
@@ -1888,12 +1895,15 @@ function RatingsTab({
     return modalityMatch && starsMatch;
   });
 
+  // Asegurar que filteredRatings sea un array
+  const safeFilteredRatings = Array.isArray(filteredRatings) ? filteredRatings : [];
+  
   // Calcular páginas
-  const totalPages = Math.ceil(filteredRatings.length / ratingsPerPage);
+  const totalPages = Math.ceil(safeFilteredRatings.length / ratingsPerPage);
   
   // Obtener ratings de la página actual
   const startIndex = (page - 1) * ratingsPerPage;
-  const paginatedRatings = filteredRatings.slice(startIndex, startIndex + ratingsPerPage);
+  const paginatedRatings = safeFilteredRatings.slice(startIndex, startIndex + ratingsPerPage);
   
   // Cambiar de página
   const handlePageChange = (event, value) => {
@@ -2279,7 +2289,7 @@ function RatingsTab({
                     width: '100%'
                   }}
                 >
-                  {paginatedRatings.map((rating, index) => (
+                  {(paginatedRatings || []).map((rating, index) => (
                     <Fade in timeout={400 + index * 150} key={rating.id}>
                     <Card
                       sx={{
