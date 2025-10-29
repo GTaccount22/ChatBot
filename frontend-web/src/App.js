@@ -129,18 +129,16 @@ function App() {
 
   const colors = isDarkMode ? COLOR_PALETTES.dark : COLOR_PALETTES.light;
 
-  // Función para probar si ngrok está disponible
-  const testNgrokConnection = async () => {
+  // Función para probar si el backend está disponible
+  const testBackendConnection = async () => {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000);
       
-      const response = await fetch('https://exilic-unconditionally-channing.ngrok-free.dev/api/usuarios-por-dia', {
+      const API_URL = process.env.REACT_APP_API_URL || "https://chatbot-f08a.onrender.com";
+      const response = await fetch(`${API_URL}/api/usuarios-por-dia`, {
         method: 'HEAD',
-        signal: controller.signal,
-        headers: {
-          'ngrok-skip-browser-warning': 'true'
-        }
+        signal: controller.signal
       });
       
       clearTimeout(timeoutId);
@@ -270,7 +268,7 @@ function App() {
     }
   };
 
-  // Inicializar Socket.IO con detección automática de ngrok
+  // Inicializar Socket.IO (usa la misma URL que la API)
   useEffect(() => {
     let mounted = true;
     let currentSocket = null;
@@ -278,7 +276,7 @@ function App() {
     const initializeSocket = async () => {
       try {
         // URL de producción para Socket.IO (usa la misma que API_URL)
-        const API_URL = process.env.REACT_APP_API_URL || "https://exilic-unconditionally-channing.ngrok-free.dev";
+        const API_URL = process.env.REACT_APP_API_URL || "https://chatbot-f08a.onrender.com";
         const socketUrl = API_URL;
         
         console.log(`🔄 Conectando Socket.IO a: ${socketUrl}`);
@@ -292,10 +290,7 @@ function App() {
           reconnectionDelayMax: 10000,
           upgrade: true,
           rememberUpgrade: true,
-          forceNew: true,
-          extraHeaders: {
-            'ngrok-skip-browser-warning': 'true'
-          }
+          forceNew: true
         });
         
         if (!mounted) return;

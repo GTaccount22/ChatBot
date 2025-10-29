@@ -4,22 +4,17 @@
 import { createClient } from "@supabase/supabase-js";
 import axios from "axios";
 import bodyParser from "body-parser";
-import { spawn } from "child_process";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
-import fs from "fs";
 import { createServer } from "http";
-import ngrok from "ngrok";
-import path from "path";
 import { Server } from "socket.io";
 import { fileURLToPath } from "url";
 
-// Obtener __dirname en ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 dotenv.config();
+
+// URL del backend en Render
+const BACKEND_URL = process.env.BACKEND_URL || "https://chatbot-f08a.onrender.com";
 
 // ========================================
 // 🚀 CONFIGURACIÓN DEL SERVIDOR
@@ -819,27 +814,17 @@ app.get("/", (req, res) => {
   });
 });
 
-// Endpoint para obtener la URL de ngrok
-app.get("/api/ngrok-url", (req, res) => {
+// Endpoint para obtener la URL del webhook
+app.get("/api/webhook-url", (req, res) => {
   try {
-    if (fs.existsSync('ngrok-url.txt')) {
-      const url = fs.readFileSync('ngrok-url.txt', 'utf8').trim();
-      res.json({ 
-        ngrok_url: url,
-        webhook_url: `${url}/webhook`,
-        api_base: url,
-        status: "active"
-      });
-    } else {
-      res.json({ 
-        ngrok_url: null,
-        webhook_url: null,
-        api_base: `http://localhost:${PORT}`,
-        status: "local_only"
-      });
-    }
+    res.json({ 
+      backend_url: BACKEND_URL,
+      webhook_url: `${BACKEND_URL}/webhook`,
+      api_base: BACKEND_URL,
+      status: "active"
+    });
   } catch (error) {
-    res.status(500).json({ error: "Error obteniendo URL de ngrok" });
+    res.status(500).json({ error: "Error obteniendo URL del webhook" });
   }
 });
 
@@ -850,7 +835,8 @@ app.get("/api/debug", (req, res) => {
     timestamp: new Date().toISOString(),
     status: "Servidor funcionando correctamente",
     puerto: PORT,
-    backend_url: "https://exilic-unconditionally-channing.ngrok-free.dev"
+    backend_url: BACKEND_URL,
+    webhook_url: `${BACKEND_URL}/webhook`
   });
 });
 
@@ -1141,176 +1127,14 @@ io.on("connection", (socket) => {
 // ========================================
 const PORT = process.env.PORT || 5000;
 
-
-// Función para iniciar ngrok
-async function startNgrok() {
-  try {
-    console.log('🔄 Iniciando ngrok...');
-    
-    // Si hay un archivo con la URL guardada, intentar leerlo
-    if (fs.existsSync('ngrok-url.txt')) {
-      const savedUrl = fs.readFileSync('ngrok-url.txt', 'utf8').trim();
-      console.log(`📖 URL guardada encontrada: ${savedUrl}`);
-      console.log('💡 Si necesitas una nueva URL, borra el archivo ngrok-url.txt y reinicia');
-      return savedUrl;
-    }
-    
-    // Intentar primero con el paquete npm
-    try {
-      const ngrokConfig = {
-        addr: PORT,
-        region: 'us' // Región más estable
-      };
-      
-      // Agregar authtoken si está disponible (ngrok v4)
-      if (process.env.NGROK_AUTHTOKEN) {
-        ngrokConfig.authtoken = process.env.NGROK_AUTHTOKEN;
-        console.log('🔑 NGROK_AUTHTOKEN encontrado en .env (longitud:', process.env.NGROK_AUTHTOKEN.length, 'caracteres)');
-      } else {
-        console.log('⚠️ NGROK_AUTHTOKEN NO encontrado en .env - ngrok puede fallar');
-        console.log('💡 Para obtener tu token: https://dashboard.ngrok.com/get-started/your-authtoken');
-      }
-      
-      console.log('🔧 Intentando conectar ngrok...');
-      const url = await ngrok.connect(ngrokConfig);
-      
-      console.log(`🌐 Ngrok URL: ${url}`);
-      console.log(`📱 Webhook URL para WhatsApp: ${url}/webhook`);
-      
-      // Guardar la URL en un archivo para fácil acceso
-      fs.writeFileSync('ngrok-url.txt', url);
-      console.log(`💾 URL guardada en ngrok-url.txt`);
-      
-      return url;
-    } catch (npmError) {
-      console.error('❌ Error detallado del paquete ngrok:', npmError.message);
-      
-      // Si el error es "failed to start tunnel", puede ser por falta de authtoken o problema de configuración
-      if (npmError.message.includes('failed to start tunnel')) {
-        if (!process.env.NGROK_AUTHTOKEN) {
-          console.log('⚠️ No se encontró NGROK_AUTHTOKEN en las variables de entorno.');
-          console.log('💡 ngrok requiere un authtoken para funcionar. Puedes obtener uno en: https://dashboard.ngrok.com/get-started/your-authtoken');
-          console.log('📝 Agrega NGROK_AUTHTOKEN=tu_token_aqui a tu archivo .env');
-        } else {
-          console.log('⚠️ El authtoken puede ser inválido o ngrok no puede iniciar el túnel.');
-        }
-        
-        // Intentar ejecutar ngrok.exe directamente como alternativa
-        console.log('\n🔄 Intentando ejecutar ngrok.exe directamente como alternativa...');
-      }
-      
-      // Si hay errores internos del paquete o problemas con spawn, intentar ejecutar ngrok.exe directamente
-      const shouldTryDirectSpawn = npmError.message.includes('spawn') || 
-          npmError.message.includes('UNKNOWN') || 
-          npmError.message.includes('ENOENT') || 
-          npmError.message.includes('failed to start tunnel') ||
-          npmError.message.includes('Cannot read properties') ||
-          npmError.message.includes('reading') ||
-          npmError.message.includes('undefined');
-      
-      if (shouldTryDirectSpawn) {
-        console.log('\n🔄 El paquete npm tiene problemas, intentando ejecutar ngrok.exe directamente...');
-        
-        try {
-          // Primero intentar usar el ngrok.exe local en node_modules
-          const ngrokExePath = path.join(__dirname, 'node_modules', 'ngrok', 'bin', 'ngrok.exe');
-          let ngrokCommand = 'ngrok';
-          
-          // Si existe el binario local, usarlo
-          if (fs.existsSync(ngrokExePath)) {
-            ngrokCommand = ngrokExePath;
-            console.log('📦 Usando ngrok.exe del paquete npm local');
-          } else {
-            console.log('🔍 Buscando ngrok.exe en el PATH del sistema...');
-          }
-          
-          // Intentar ejecutar ngrok desde el PATH del sistema o desde node_modules
-          const ngrokArgs = ['http', PORT.toString()];
-          if (process.env.NGROK_AUTHTOKEN) {
-            ngrokArgs.push('--authtoken', process.env.NGROK_AUTHTOKEN);
-            console.log('🔑 Usando NGROK_AUTHTOKEN del .env para ngrok.exe');
-          } else {
-            console.log('⚠️ NGROK_AUTHTOKEN NO encontrado - ngrok.exe puede fallar sin authtoken');
-          }
-          
-          console.log(`🔧 Ejecutando: ${path.basename(ngrokCommand)} ${ngrokArgs.filter(arg => !arg.includes('auth')).join(' ')} [authtoken oculto]`);
-          const ngrokProcess = spawn(ngrokCommand, ngrokArgs, {
-            detached: true,
-            stdio: 'ignore',
-            shell: true // En Windows, shell:true ayuda con ejecutables .exe
-          });
-          
-          // Manejar errores del proceso
-          ngrokProcess.on('error', (spawnError) => {
-            console.error('❌ Error ejecutando ngrok.exe:', spawnError.message);
-            console.log('💡 Asegúrate de que ngrok.exe esté en tu PATH o descárgalo desde https://ngrok.com/download');
-          });
-          
-          // Verificar si el proceso se inició correctamente
-          if (!ngrokProcess.pid) {
-            throw new Error('No se pudo iniciar el proceso ngrok');
-          }
-          
-          // Desvincular el proceso para que no se cierre cuando termine el proceso padre
-          ngrokProcess.unref();
-          
-          // Esperar un poco antes de intentar obtener la URL
-          console.log('⏳ Esperando a que ngrok inicie...');
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          
-          // Esperar a que ngrok inicie y obtener la URL
-          const url = await getNgrokUrlFromAPI();
-          
-          console.log(`🌐 Ngrok URL (ejecutado manualmente): ${url}`);
-          console.log(`📱 Webhook URL para WhatsApp: ${url}/webhook`);
-          
-          // Guardar la URL
-          fs.writeFileSync('ngrok-url.txt', url);
-          console.log(`💾 URL guardada en ngrok-url.txt`);
-          
-          // Guardar referencia al PID
-          console.log(`🔧 Proceso ngrok iniciado con PID: ${ngrokProcess.pid}`);
-          
-          return url;
-        } catch (spawnError) {
-          console.error('⚠️ No se pudo ejecutar ngrok.exe directamente:', spawnError.message);
-          // No lanzar error aquí, dejar que se maneje abajo
-        }
-      }
-      
-      // Si llegamos aquí, todos los intentos fallaron
-      throw npmError;
-    }
-  } catch (error) {
-    console.error('❌ Error iniciando ngrok:', error.message);
-    console.log('\n💡 Soluciones:');
-    console.log('   1. Instala ngrok globalmente: npm install -g ngrok');
-    console.log('   2. O descarga ngrok manualmente desde https://ngrok.com/download');
-    console.log('   3. Coloca ngrok.exe en tu PATH o en el directorio del proyecto');
-    console.log('   4. Si ya tienes ngrok instalado, ejecuta manualmente: ngrok http 5000');
-    console.log('   5. Luego usa la URL de ngrok en tu configuración de webhook');
-    if (process.env.NGROK_AUTHTOKEN) {
-      console.log('   6. Asegúrate de que NGROK_AUTHTOKEN en tu .env sea válido');
-    }
-    return null;
-  }
-}
-
-server.listen(PORT, async () => {
+server.listen(PORT, () => {
   console.log(`🚀 Servidor unificado escuchando en http://localhost:${PORT}`);
   console.log(`🤖 Bot de WhatsApp: activo`);
   console.log(`🔌 Socket.IO: integrado`);
-  
-  // Iniciar ngrok
-  const ngrokUrl = await startNgrok();
-  
-  if (ngrokUrl) {
-    console.log(`\n🎉 ¡Servidor listo!`);
-    console.log(`📱 Usa esta URL para configurar tu webhook de WhatsApp: ${ngrokUrl}/webhook`);
-    console.log(`🌐 Accede a tu API desde: ${ngrokUrl}`);
-  } else {
-    console.log(`\n⚠️ Servidor funcionando solo localmente en http://localhost:${PORT}`);
-  }
+  console.log(`\n🎉 ¡Servidor listo!`);
+  console.log(`🌐 Backend URL: ${BACKEND_URL}`);
+  console.log(`📱 Webhook URL para WhatsApp: ${BACKEND_URL}/webhook`);
+  console.log(`🔗 Usa esta URL en tu configuración de webhook de Meta/WhatsApp`);
 }).on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`\n❌ El puerto ${PORT} ya está en uso.`);

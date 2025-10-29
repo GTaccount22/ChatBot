@@ -9,22 +9,22 @@ const normalizeUrl = (url) => {
 /**
  * URL del backend API
  * 
- * En desarrollo: usa ngrok o localhost (según .env)
- * En producción (Render): debe configurarse como variable de entorno REACT_APP_API_URL
+ * En desarrollo: usa localhost (según .env)
+ * En producción (Render): usa la URL de Render como fallback o variable de entorno REACT_APP_API_URL
  * 
- * Para configurar en Render:
+ * Para configurar en Render (opcional, ya hay fallback):
  * 1. Ve a tu servicio de frontend en Render Dashboard
  * 2. Settings → Environment Variables
- * 3. Agrega: REACT_APP_API_URL = https://tu-backend.onrender.com
+ * 3. Agrega: REACT_APP_API_URL = https://chatbot-f08a.onrender.com
  * 
  * IMPORTANTE: Esta debe ser la URL del BACKEND, no del frontend
  */
-const API_URL = normalizeUrl(process.env.REACT_APP_API_URL || "https://exilic-unconditionally-channing.ngrok-free.dev");
+const API_URL = normalizeUrl(process.env.REACT_APP_API_URL || "https://chatbot-f08a.onrender.com");
 
 // Log para verificar qué URL se está usando
 console.log('🔗 API_URL configurada:', API_URL);
-console.log('🔗 REACT_APP_API_URL:', process.env.REACT_APP_API_URL || 'No configurada (usando fallback ngrok)');
-console.log('🔗 Modo:', process.env.REACT_APP_API_URL ? 'PRODUCCIÓN (Render)' : 'DESARROLLO (ngrok)');
+console.log('🔗 REACT_APP_API_URL:', process.env.REACT_APP_API_URL || 'No configurada (usando fallback Render)');
+console.log('🔗 Modo:', process.env.REACT_APP_API_URL ? 'PRODUCCIÓN (variable de entorno)' : 'PRODUCCIÓN (fallback Render)');
 
 // Validar que la URL no esté vacía
 if (!API_URL) {
