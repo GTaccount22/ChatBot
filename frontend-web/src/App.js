@@ -1,60 +1,59 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import { getQuestions, createQuestion, updateQuestion, deleteQuestion, toggleQuestionState } from "./services/questionService";
-import { getRatings } from "./services/ratingService";
-import { getCategories, createCategory, updateCategory, deleteCategory } from "./services/categoryService";
-import { io } from "socket.io-client";
-import { COLOR_PALETTES, COMMON_STYLES, SELECT_MENU_PROPS } from "./constants/styles";
+import AddIcon from "@mui/icons-material/Add";
+import CategoryIcon from "@mui/icons-material/Category";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
+import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import GradeIcon from "@mui/icons-material/Grade";
+import HomeIcon from "@mui/icons-material/Home";
+import LightModeIcon from "@mui/icons-material/LightMode";
+import MenuIcon from "@mui/icons-material/Menu";
+import QuestionAnswerIcon from "@mui/icons-material/QuestionAnswer";
 import {
-  Container,
-  Typography,
-  TextField,
+  Box,
   Button,
+  Card,
+  CardContent,
+  Chip,
+  Container,
+  Dialog,
+  DialogActions,
+  DialogTitle,
+  Divider,
+  Drawer,
+  Fade,
+  FormControl,
+  FormControlLabel,
+  IconButton,
+  InputLabel,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  MenuItem,
+  Pagination,
+  Select,
+  Slide,
+  Stack,
+  Switch,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  IconButton,
-  Select,
-  MenuItem,
-  InputLabel,
-  FormControl,
-  Stack,
-  Grid,
-  Dialog,
-  DialogTitle,
-  DialogActions,
-  Box,
-  Fade,
-  Slide,
-  Chip,
-  Card,
-  CardContent,
-  Divider,
-  Drawer,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  useTheme,
+  TextField,
+  Typography,
   useMediaQuery,
-  Switch,
-  FormControlLabel,
-  Pagination
+  useTheme
 } from "@mui/material";
-import DeleteIcon from "@mui/icons-material/Delete";
-import EditIcon from "@mui/icons-material/Edit";
-import FilterListIcon from "@mui/icons-material/FilterList";
-import AddIcon from "@mui/icons-material/Add";
-import CategoryIcon from "@mui/icons-material/Category";
-import QuestionAnswerIcon from "@mui/icons-material/QuestionAnswer";
-import HomeIcon from "@mui/icons-material/Home";
-import GradeIcon from "@mui/icons-material/Grade";
-import MenuIcon from "@mui/icons-material/Menu";
-import DarkModeIcon from "@mui/icons-material/DarkMode";
-import LightModeIcon from "@mui/icons-material/LightMode";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { io } from "socket.io-client";
+import { COLOR_PALETTES, COMMON_STYLES, SELECT_MENU_PROPS } from "./constants/styles";
+import { createCategory, deleteCategory, getCategories } from "./services/categoryService";
+import { createQuestion, deleteQuestion, getQuestions, toggleQuestionState, updateQuestion } from "./services/questionService";
+import { getRatings } from "./services/ratingService";
 
 // Función helper para Google Analytics
 const trackEvent = (eventName, params = {}) => {
@@ -174,18 +173,17 @@ function App() {
 
   const loadQuestions = async () => {
     try {
-      const data = await getQuestions();
-      // Asegurar que siempre sea un array
-      setQuestions(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Error loading questions:', error);
-      setQuestions([]); // Asegurar array vacío en caso de error
-    }
+    const data = await getQuestions();
+    setQuestions(data);
+    // Las categorías se cargan por separado con loadCategories()
+  } catch (error) {
+    console.error('Error loading questions:', error);
+  }
   };
 
   // Función helper para obtener el nombre de la categoría
   const getCategoryName = (categoryId) => {
-    const category = (Array.isArray(categories) ? categories : []).find(cat => cat.id === categoryId);
+    const category = categories.find(cat => cat.id === categoryId);
     return category ? category.name_category : 'Sin categoría';
   };
 
@@ -195,11 +193,10 @@ function App() {
         setLoading(true);
       }
       const data = await getRatings();
-      // Asegurar que siempre sea un array
-      setRatings(Array.isArray(data) ? data : []);
+      setRatings(data);
     } catch (error) {
       console.error('Error loading ratings:', error);
-      setRatings([]); // Asegurar array vacío en caso de error
+      setRatings([]);
     } finally {
       if (showLoading) {
         setLoading(false);
@@ -211,11 +208,9 @@ function App() {
   const loadCategories = async () => {
     try {
       const data = await getCategories();
-      // Asegurar que siempre sea un array
-      setCategories(Array.isArray(data) ? data : []);
+      setCategories(data);
     } catch (error) {
       console.error('Error loading categories:', error);
-      setCategories([]); // Asegurar array vacío en caso de error
     }
   };
 
@@ -259,8 +254,9 @@ function App() {
     
     const initializeSocket = async () => {
       try {
-        // URL de ngrok para Socket.IO
-        const socketUrl = 'https://exilic-unconditionally-channing.ngrok-free.dev';
+        // URL de producción para Socket.IO (usa la misma que API_URL)
+        const API_URL = process.env.REACT_APP_API_URL || "https://exilic-unconditionally-channing.ngrok-free.dev";
+        const socketUrl = API_URL;
         
         console.log(`🔄 Conectando Socket.IO a: ${socketUrl}`);
         
@@ -273,7 +269,10 @@ function App() {
           reconnectionDelayMax: 10000,
           upgrade: true,
           rememberUpgrade: true,
-          forceNew: true
+          forceNew: true,
+          extraHeaders: {
+            'ngrok-skip-browser-warning': 'true'
+          }
         });
         
         if (!mounted) return;
@@ -375,7 +374,7 @@ function App() {
       }
     } else {
       // Buscar el ID de la categoría existente
-      const foundCategory = (Array.isArray(categories) ? categories : []).find(cat => cat.name_category === catToSend);
+      const foundCategory = categories.find(cat => cat.name_category === catToSend);
       if (!foundCategory) {
         alert('Categoría no encontrada');
         // Limpiar campos automáticamente
@@ -415,7 +414,7 @@ function App() {
   const handleEdit = (q) => {
     setEditingId(q.id);
     // Buscar la categoría por ID en la lista de categorías
-    const foundCategory = (Array.isArray(categories) ? categories : []).find(cat => cat.id === q.category_id);
+    const foundCategory = categories.find(cat => cat.id === q.category_id);
     if (foundCategory) {
       setCategory(foundCategory.name_category);
       setNewCategory("");
@@ -861,23 +860,20 @@ function AdminPanel({
 
   // Filtrar preguntas por categoría seleccionada
   const filteredQuestions = selectedFilterCategory && selectedFilterCategory !== "todas"
-    ? (Array.isArray(questions) ? questions : []).filter(q => getCategoryName(q.category_id) === selectedFilterCategory)
-    : (Array.isArray(questions) ? questions : []);
+    ? questions.filter(q => getCategoryName(q.category_id) === selectedFilterCategory)
+    : questions;
 
   // Resetear página cuando cambie el filtro de categoría
   useEffect(() => {
     setQuestionsPage(1);
   }, [selectedFilterCategory]);
 
-  // Asegurar que filteredQuestions sea un array
-  const safeFilteredQuestions = Array.isArray(filteredQuestions) ? filteredQuestions : [];
-  
   // Calcular páginas para preguntas
-  const totalQuestionsPages = Math.ceil(safeFilteredQuestions.length / questionsPerPage);
+  const totalQuestionsPages = Math.ceil(filteredQuestions.length / questionsPerPage);
   
   // Obtener preguntas de la página actual
   const startIndex = (questionsPage - 1) * questionsPerPage;
-  const paginatedQuestions = safeFilteredQuestions.slice(startIndex, startIndex + questionsPerPage);
+  const paginatedQuestions = filteredQuestions.slice(startIndex, startIndex + questionsPerPage);
   
   // Cambiar de página
   const handleQuestionsPageChange = (event, value) => {
@@ -1027,7 +1023,7 @@ function AdminPanel({
                       }
                     }}
                   >
-                    {(categories || []).map((cat) => (
+                    {categories.map((cat) => (
                       <MenuItem key={cat.id} value={cat.name_category}>
                         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                           <CategoryIcon sx={{ fontSize: 16, color: colors.textPrimary }} />
@@ -1329,7 +1325,7 @@ function AdminPanel({
                     <MenuItem value="todas">
                       <em style={{ color: colors.textPrimary }}>Todas las categorías</em>
                     </MenuItem>
-                    {(categories || []).map((cat) => (
+                    {categories.map((cat) => (
                       <MenuItem key={cat.id} value={cat.name_category}>
                         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                           <CategoryIcon sx={{ fontSize: 16, color: colors.textPrimary }} />
@@ -1344,7 +1340,7 @@ function AdminPanel({
                   variant="outlined"
                   disabled={!selectedFilterCategory || selectedFilterCategory === "todas"}
                   onClick={() => {
-                    const categoryToDelete = (Array.isArray(categories) ? categories : []).find(cat => cat.name_category === selectedFilterCategory);
+                    const categoryToDelete = categories.find(cat => cat.name_category === selectedFilterCategory);
                     if (categoryToDelete) {
                       if (window.confirm(`¿Estás seguro de que quieres eliminar la categoría "${selectedFilterCategory}"?\n\nEsto eliminará todas las preguntas de esta categoría.`)) {
                         handleDeleteCategory(categoryToDelete.id);
@@ -1517,7 +1513,7 @@ function AdminPanel({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {(paginatedQuestions || []).map((q, index) => (
+                  {paginatedQuestions.map((q, index) => (
                     <Fade in timeout={500 + index * 100} key={q.id}>
                       <TableRow
                         hover
@@ -1647,7 +1643,7 @@ function AdminPanel({
             {/* Vista de cards para móvil */}
             <Box sx={{ display: { xs: 'block', md: 'none' } }}>
               <Stack spacing={2} sx={{ p: 2 }}>
-                {(paginatedQuestions || []).map((q, index) => (
+                {paginatedQuestions.map((q, index) => (
                   <Fade in timeout={500 + index * 100} key={q.id}>
                     <Card
                       sx={{
@@ -1879,7 +1875,7 @@ function RatingsTab({
   const [selectedFilterStars, setSelectedFilterStars] = useState("todas");
 
   // Función para filtrar ratings
-  const filteredRatings = (Array.isArray(ratings) ? ratings : []).filter(rating => {
+  const filteredRatings = ratings.filter(rating => {
     // Filtro por modalidad - buscar en diferentes campos posibles
     const ratingModality = (rating.modality || rating.modalidad || rating.Modality?.type || '').toString().trim();
     const filterModality = selectedFilterModalidad?.trim() || '';
@@ -1895,15 +1891,12 @@ function RatingsTab({
     return modalityMatch && starsMatch;
   });
 
-  // Asegurar que filteredRatings sea un array
-  const safeFilteredRatings = Array.isArray(filteredRatings) ? filteredRatings : [];
-  
   // Calcular páginas
-  const totalPages = Math.ceil(safeFilteredRatings.length / ratingsPerPage);
+  const totalPages = Math.ceil(filteredRatings.length / ratingsPerPage);
   
   // Obtener ratings de la página actual
   const startIndex = (page - 1) * ratingsPerPage;
-  const paginatedRatings = safeFilteredRatings.slice(startIndex, startIndex + ratingsPerPage);
+  const paginatedRatings = filteredRatings.slice(startIndex, startIndex + ratingsPerPage);
   
   // Cambiar de página
   const handlePageChange = (event, value) => {
@@ -2289,7 +2282,7 @@ function RatingsTab({
                     width: '100%'
                   }}
                 >
-                  {(paginatedRatings || []).map((rating, index) => (
+                  {paginatedRatings.map((rating, index) => (
                     <Fade in timeout={400 + index * 150} key={rating.id}>
                     <Card
                       sx={{

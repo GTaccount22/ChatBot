@@ -4,6 +4,7 @@
 import { createClient } from "@supabase/supabase-js";
 import axios from "axios";
 import bodyParser from "body-parser";
+import { spawn } from "child_process";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
@@ -24,18 +25,28 @@ dotenv.config();
 // 🚀 CONFIGURACIÓN DEL SERVIDOR
 // ========================================
 const app = express();
+
+// CORS - Middleware personalizado para debugging
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// También usar cors para redundancia
 app.use(cors({
-  origin: [
-    "https://chatbot-4gaq.onrender.com",
-    "http://chatbot-4gaq.onrender.com",
-    "https://exilic-unconditionally-channing.ngrok-free.dev",
-    "http://exilic-unconditionally-channing.ngrok-free.dev",
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://localhost:8081",
-  ],
-  credentials: true
+  origin: true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+
 app.use(bodyParser.json());
 
 // Crear servidor HTTP
@@ -62,17 +73,9 @@ const userStates = new Map();
 // ========================================
 const io = new Server(server, {
   cors: {
-    origin: [
-      "https://chatbot-4gaq.onrender.com", // Producción - Frontend React
-      "http://chatbot-4gaq.onrender.com", // Producción sin SSL
-      "https://exilic-unconditionally-channing.ngrok-free.dev", // Ngrok URL
-      "http://exilic-unconditionally-channing.ngrok-free.dev", // Ngrok URL sin SSL
-      "http://localhost:3000", // Desarrollo local
-      "http://localhost:3001", 
-      "http://localhost:8081",  // App Móvil Expo
-      "exp://2w08npi-victorz14-8081.exp.direct", //app expo link
-    ],
+    origin: "*", // Permite todos los orígenes temporalmente
     methods: ["GET", "POST"],
+    credentials: true
   },
 });
 
@@ -839,7 +842,18 @@ app.get("/api/debug", (req, res) => {
   res.json({
     conexiones_activas: io.engine.clientsCount,
     timestamp: new Date().toISOString(),
-    status: "Servidor funcionando correctamente"
+    status: "Servidor funcionando correctamente",
+    puerto: PORT,
+    backend_url: "https://exilic-unconditionally-channing.ngrok-free.dev"
+  });
+});
+
+// Health check endpoint
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    server: "Backend ChatBot funcionando"
   });
 });
 
@@ -1121,30 +1135,178 @@ io.on("connection", (socket) => {
 // ========================================
 const PORT = process.env.PORT || 5000;
 
+// Función para obtener la URL de ngrok desde su API local
+async function getNgrokUrlFromAPI(maxAttempts = 10, delay = 1000) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await axios.get('http://127.0.0.1:4040/api/tunnels', {
+        timeout: 2000
+      });
+      const tunnels = response.data.tunnels;
+      if (tunnels && tunnels.length > 0) {
+        return tunnels[0].public_url;
+      }
+    } catch (error) {
+      if (attempt < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      throw new Error('No se pudo conectar a la API de ngrok después de varios intentos');
+    }
+  }
+  throw new Error('No se encontraron túneles activos');
+}
+
 // Función para iniciar ngrok
 async function startNgrok() {
   try {
     console.log('🔄 Iniciando ngrok...');
-    const url = await ngrok.connect({
-      addr: PORT,
-      // Remover configuraciones opcionales que pueden causar problemas
-    });
     
-    console.log(`🌐 Ngrok URL: ${url}`);
-    console.log(`📱 Webhook URL para WhatsApp: ${url}/webhook`);
+    // Si hay un archivo con la URL guardada, intentar leerlo
+    if (fs.existsSync('ngrok-url.txt')) {
+      const savedUrl = fs.readFileSync('ngrok-url.txt', 'utf8').trim();
+      console.log(`📖 URL guardada encontrada: ${savedUrl}`);
+      console.log('💡 Si necesitas una nueva URL, borra el archivo ngrok-url.txt y reinicia');
+      return savedUrl;
+    }
     
-    // Guardar la URL en un archivo para fácil acceso
-    fs.writeFileSync('ngrok-url.txt', url);
-    console.log(`💾 URL guardada en ngrok-url.txt`);
-    
-    return url;
+    // Intentar primero con el paquete npm
+    try {
+      const ngrokConfig = {
+        addr: PORT,
+        region: 'us' // Región más estable
+      };
+      
+      // Agregar authtoken si está disponible (ngrok v4)
+      if (process.env.NGROK_AUTHTOKEN) {
+        ngrokConfig.authtoken = process.env.NGROK_AUTHTOKEN;
+        console.log('🔑 NGROK_AUTHTOKEN encontrado en .env (longitud:', process.env.NGROK_AUTHTOKEN.length, 'caracteres)');
+      } else {
+        console.log('⚠️ NGROK_AUTHTOKEN NO encontrado en .env - ngrok puede fallar');
+        console.log('💡 Para obtener tu token: https://dashboard.ngrok.com/get-started/your-authtoken');
+      }
+      
+      console.log('🔧 Intentando conectar ngrok...');
+      const url = await ngrok.connect(ngrokConfig);
+      
+      console.log(`🌐 Ngrok URL: ${url}`);
+      console.log(`📱 Webhook URL para WhatsApp: ${url}/webhook`);
+      
+      // Guardar la URL en un archivo para fácil acceso
+      fs.writeFileSync('ngrok-url.txt', url);
+      console.log(`💾 URL guardada en ngrok-url.txt`);
+      
+      return url;
+    } catch (npmError) {
+      console.error('❌ Error detallado del paquete ngrok:', npmError.message);
+      
+      // Si el error es "failed to start tunnel", puede ser por falta de authtoken o problema de configuración
+      if (npmError.message.includes('failed to start tunnel')) {
+        if (!process.env.NGROK_AUTHTOKEN) {
+          console.log('⚠️ No se encontró NGROK_AUTHTOKEN en las variables de entorno.');
+          console.log('💡 ngrok requiere un authtoken para funcionar. Puedes obtener uno en: https://dashboard.ngrok.com/get-started/your-authtoken');
+          console.log('📝 Agrega NGROK_AUTHTOKEN=tu_token_aqui a tu archivo .env');
+        } else {
+          console.log('⚠️ El authtoken puede ser inválido o ngrok no puede iniciar el túnel.');
+        }
+        
+        // Intentar ejecutar ngrok.exe directamente como alternativa
+        console.log('\n🔄 Intentando ejecutar ngrok.exe directamente como alternativa...');
+      }
+      
+      // Si hay errores internos del paquete o problemas con spawn, intentar ejecutar ngrok.exe directamente
+      const shouldTryDirectSpawn = npmError.message.includes('spawn') || 
+          npmError.message.includes('UNKNOWN') || 
+          npmError.message.includes('ENOENT') || 
+          npmError.message.includes('failed to start tunnel') ||
+          npmError.message.includes('Cannot read properties') ||
+          npmError.message.includes('reading') ||
+          npmError.message.includes('undefined');
+      
+      if (shouldTryDirectSpawn) {
+        console.log('\n🔄 El paquete npm tiene problemas, intentando ejecutar ngrok.exe directamente...');
+        
+        try {
+          // Primero intentar usar el ngrok.exe local en node_modules
+          const ngrokExePath = path.join(__dirname, 'node_modules', 'ngrok', 'bin', 'ngrok.exe');
+          let ngrokCommand = 'ngrok';
+          
+          // Si existe el binario local, usarlo
+          if (fs.existsSync(ngrokExePath)) {
+            ngrokCommand = ngrokExePath;
+            console.log('📦 Usando ngrok.exe del paquete npm local');
+          } else {
+            console.log('🔍 Buscando ngrok.exe en el PATH del sistema...');
+          }
+          
+          // Intentar ejecutar ngrok desde el PATH del sistema o desde node_modules
+          const ngrokArgs = ['http', PORT.toString()];
+          if (process.env.NGROK_AUTHTOKEN) {
+            ngrokArgs.push('--authtoken', process.env.NGROK_AUTHTOKEN);
+            console.log('🔑 Usando NGROK_AUTHTOKEN del .env para ngrok.exe');
+          } else {
+            console.log('⚠️ NGROK_AUTHTOKEN NO encontrado - ngrok.exe puede fallar sin authtoken');
+          }
+          
+          console.log(`🔧 Ejecutando: ${path.basename(ngrokCommand)} ${ngrokArgs.filter(arg => !arg.includes('auth')).join(' ')} [authtoken oculto]`);
+          const ngrokProcess = spawn(ngrokCommand, ngrokArgs, {
+            detached: true,
+            stdio: 'ignore',
+            shell: true // En Windows, shell:true ayuda con ejecutables .exe
+          });
+          
+          // Manejar errores del proceso
+          ngrokProcess.on('error', (spawnError) => {
+            console.error('❌ Error ejecutando ngrok.exe:', spawnError.message);
+            console.log('💡 Asegúrate de que ngrok.exe esté en tu PATH o descárgalo desde https://ngrok.com/download');
+          });
+          
+          // Verificar si el proceso se inició correctamente
+          if (!ngrokProcess.pid) {
+            throw new Error('No se pudo iniciar el proceso ngrok');
+          }
+          
+          // Desvincular el proceso para que no se cierre cuando termine el proceso padre
+          ngrokProcess.unref();
+          
+          // Esperar un poco antes de intentar obtener la URL
+          console.log('⏳ Esperando a que ngrok inicie...');
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          // Esperar a que ngrok inicie y obtener la URL
+          const url = await getNgrokUrlFromAPI();
+          
+          console.log(`🌐 Ngrok URL (ejecutado manualmente): ${url}`);
+          console.log(`📱 Webhook URL para WhatsApp: ${url}/webhook`);
+          
+          // Guardar la URL
+          fs.writeFileSync('ngrok-url.txt', url);
+          console.log(`💾 URL guardada en ngrok-url.txt`);
+          
+          // Guardar referencia al PID
+          console.log(`🔧 Proceso ngrok iniciado con PID: ${ngrokProcess.pid}`);
+          
+          return url;
+        } catch (spawnError) {
+          console.error('⚠️ No se pudo ejecutar ngrok.exe directamente:', spawnError.message);
+          // No lanzar error aquí, dejar que se maneje abajo
+        }
+      }
+      
+      // Si llegamos aquí, todos los intentos fallaron
+      throw npmError;
+    }
   } catch (error) {
     console.error('❌ Error iniciando ngrok:', error.message);
-    console.log('💡 Ngrok no disponible, servidor funcionará solo localmente');
-    console.log('💡 Para usar ngrok:');
-    console.log('   1. Regístrate en https://ngrok.com');
-    console.log('   2. Descarga ngrok y ejecuta: ngrok http 5000');
-    console.log('   3. O agrega NGROK_AUTHTOKEN a tu .env');
+    console.log('\n💡 Soluciones:');
+    console.log('   1. Instala ngrok globalmente: npm install -g ngrok');
+    console.log('   2. O descarga ngrok manualmente desde https://ngrok.com/download');
+    console.log('   3. Coloca ngrok.exe en tu PATH o en el directorio del proyecto');
+    console.log('   4. Si ya tienes ngrok instalado, ejecuta manualmente: ngrok http 5000');
+    console.log('   5. Luego usa la URL de ngrok en tu configuración de webhook');
+    if (process.env.NGROK_AUTHTOKEN) {
+      console.log('   6. Asegúrate de que NGROK_AUTHTOKEN en tu .env sea válido');
+    }
     return null;
   }
 }
@@ -1164,6 +1326,18 @@ server.listen(PORT, async () => {
   } else {
     console.log(`\n⚠️ Servidor funcionando solo localmente en http://localhost:${PORT}`);
   }
+}).on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n❌ El puerto ${PORT} ya está en uso.`);
+    console.log('💡 Soluciones:');
+    console.log(`   1. Cierra la otra aplicación que usa el puerto ${PORT}`);
+    console.log(`   2. O cambia el puerto en tu archivo .env: PORT=5001`);
+    console.log(`   3. O ejecuta: netstat -ano | findstr :${PORT} para ver qué proceso lo usa`);
+    console.log('   4. Luego mata el proceso con: taskkill /PID <PID> /F');
+  } else {
+    console.error('❌ Error al iniciar el servidor:', err.message);
+  }
+  process.exit(1);
 });
 
 // ========================================
