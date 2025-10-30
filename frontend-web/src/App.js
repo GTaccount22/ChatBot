@@ -1875,6 +1875,83 @@ function AdminPanel({
   );
 }
 
+// Componente de número animado que cae desde arriba
+const AnimatedNumber = ({ value, duration = 2000, delay = 0 }) => {
+  const [displayValue, setDisplayValue] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const numberRef = useRef(null);
+
+  useEffect(() => {
+    setIsAnimating(true);
+    const targetValue = Number(value) || 0;
+    const startTime = Date.now() + delay;
+    const endTime = startTime + duration;
+    
+    const animate = () => {
+      const now = Date.now();
+      if (now < startTime) {
+        requestAnimationFrame(animate);
+        return;
+      }
+      
+      const progress = Math.min((now - startTime) / duration, 1);
+      // Usar easing function para una animación más suave
+      const easedProgress = progress < 0.5 
+        ? 2 * progress * progress 
+        : -1 + (4 - 2 * progress) * progress;
+      const currentValue = Math.floor(targetValue * easedProgress);
+      setDisplayValue(currentValue);
+      
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        setDisplayValue(targetValue);
+        setIsAnimating(false);
+      }
+    };
+    
+    setDisplayValue(0);
+    requestAnimationFrame(animate);
+  }, [value, duration, delay]);
+
+  return (
+    <Typography
+      ref={numberRef}
+      variant="h4"
+      sx={{
+        color: '#00d4ff',
+        fontWeight: 700,
+        fontFamily: "'Courier New', 'Monaco', 'Consolas', monospace",
+        fontSize: { xs: '1.8rem', sm: '2.2rem', md: '2.5rem' },
+        letterSpacing: '0.1em',
+        fontVariantNumeric: 'tabular-nums',
+        lineHeight: 1,
+        animation: isAnimating ? 'fallDown 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' : 'none',
+        '@keyframes fallDown': {
+          '0%': {
+            transform: 'translateY(-150px) scale(0.5)',
+            opacity: 0,
+            filter: 'blur(10px)'
+          },
+          '50%': {
+            opacity: 0.7,
+            filter: 'blur(5px)'
+          },
+          '100%': {
+            transform: 'translateY(0) scale(1)',
+            opacity: 1,
+            filter: 'blur(0px)'
+          }
+        },
+        transition: 'all 0.3s ease-out',
+        textShadow: '0 0 20px rgba(0, 212, 255, 0.5), 0 0 40px rgba(0, 212, 255, 0.3)'
+      }}
+    >
+      {displayValue.toLocaleString()}
+    </Typography>
+  );
+};
+
 // Ratings Tab Component
 function RatingsTab({ 
   ratings, 
@@ -1891,6 +1968,88 @@ function RatingsTab({
   
   // Estado para filtro por estrellas
   const [selectedFilterStars, setSelectedFilterStars] = useState("todas");
+
+  // Estados para estadísticas
+  const [stats, setStats] = useState({
+    usuariosHoy: 0,
+    usuariosSemana: 0,
+    usuariosMes: 0,
+    totalUsuarios: 0
+  });
+  const [loadingStats, setLoadingStats] = useState(false);
+
+  // Función para cargar estadísticas
+  const loadStats = async () => {
+    setLoadingStats(true);
+    try {
+      const API_URL = process.env.REACT_APP_API_URL || "https://chatbot-f08a.onrender.com";
+      const response = await fetch(`${API_URL}/api/usuarios-por-dia`);
+      if (response.ok) {
+        const data = await response.json();
+        // Calcular estadísticas según la estructura de datos que retorne la API
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        
+        const semanaAtras = new Date(hoy);
+        semanaAtras.setDate(semanaAtras.getDate() - 7);
+        
+        const mesAtras = new Date(hoy);
+        mesAtras.setMonth(mesAtras.getMonth() - 1);
+
+        let usuariosHoy = 0;
+        let usuariosSemana = 0;
+        let usuariosMes = 0;
+        let totalUsuarios = 0;
+
+        if (Array.isArray(data)) {
+          data.forEach(item => {
+            const fecha = new Date(item.fecha || item.date);
+            fecha.setHours(0, 0, 0, 0);
+            const usuarios = Number(item.usuarios || item.count || item.total || 0);
+            
+            totalUsuarios += usuarios;
+            
+            if (fecha.getTime() === hoy.getTime()) {
+              usuariosHoy += usuarios;
+            }
+            
+            if (fecha >= semanaAtras) {
+              usuariosSemana += usuarios;
+            }
+            
+            if (fecha >= mesAtras) {
+              usuariosMes += usuarios;
+            }
+          });
+        } else if (typeof data === 'object') {
+          // Si viene como objeto con propiedades específicas
+          usuariosHoy = Number(data.hoy || data.today || data.usuariosHoy || 0);
+          usuariosSemana = Number(data.semana || data.week || data.usuariosSemana || 0);
+          usuariosMes = Number(data.mes || data.month || data.usuariosMes || 0);
+          totalUsuarios = Number(data.total || data.totalUsuarios || 0);
+        }
+
+        setStats({
+          usuariosHoy,
+          usuariosSemana,
+          usuariosMes,
+          totalUsuarios
+        });
+      }
+    } catch (error) {
+      console.error('Error cargando estadísticas:', error);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
+  // Cargar estadísticas al montar el componente
+  useEffect(() => {
+    loadStats();
+    // Actualizar cada 30 segundos
+    const interval = setInterval(loadStats, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Función para filtrar ratings
   const filteredRatings = ratings.filter(rating => {
@@ -2174,7 +2333,7 @@ function RatingsTab({
                   </Typography>
                 </Box>
 
-                {/* Botón Dashboard en vivo */}
+                {/* Tarjetas de estadísticas con números animados */}
                 <Box sx={{
                   backgroundColor: colors.ratingCardBackground,
                   borderRadius: 3,
@@ -2182,50 +2341,128 @@ function RatingsTab({
                   border: "1px solid rgba(255,255,255,0.1)",
                   textAlign: "center",
                   flex: 1,
-                    display: "flex", 
+                  display: "flex", 
                   flexDirection: "column",
-                    justifyContent: "center", 
-                    alignItems: "center", 
-                  cursor: "pointer",
-                  transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                  "&:hover": {
-                    backgroundColor: colors.inputBackground,
-                    transform: "translateY(-4px)",
-                    boxShadow: "0 8px 24px rgba(169, 136, 242, 0.3)"
-                  }
-                }}
-                onClick={() => window.open('https://analytics.google.com/analytics/web/?authuser=2#/a373069827p510642716/reports/intelligenthome?params=_u..nav%3Dmaui%26_r.0.01..metrics%3D%5B%22activeUsers%22%5D&collectionId=12360626756', '_blank')}
-                >
-                  <Box sx={{ 
-                    display: "flex", 
-                    justifyContent: "center", 
-                    alignItems: "center",
-                    mb: 2,
-                    height: { xs: '3rem', md: '4rem' },
-                    width: '100%'
-                  }}>
-                    <Typography sx={{ 
-                      color: "#FF6B35", 
-                      fontSize: { xs: '2.5rem', md: '3.5rem' },
-                      animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite"
-                    }}>
-                      📊
-                    </Typography>
-                  </Box>
+                  justifyContent: "center", 
+                  alignItems: "center",
+                  position: "relative",
+                  overflow: "hidden"
+                }}>
                   <Typography variant="h6" sx={{ 
                     color: colors.textPrimary, 
                     fontWeight: 600, 
-                    mb: 1,
+                    mb: 2,
                     fontSize: { xs: '1rem', md: '1.25rem' }
                   }}>
-                    Dashboard en vivo
+                    Usuarios Hoy
                   </Typography>
+                  <Box sx={{ 
+                    display: "flex", 
+                    justifyContent: "center", 
+                    alignItems: "center", 
+                    mb: 1,
+                    minHeight: { xs: '3rem', md: '4rem' }
+                  }}>
+                    {loadingStats ? (
+                      <Typography sx={{ color: colors.textPrimary, opacity: 0.6 }}>Cargando...</Typography>
+                    ) : (
+                      <AnimatedNumber value={stats.usuariosHoy} duration={1500} delay={0} />
+                    )}
+                  </Box>
                   <Typography variant="caption" sx={{ 
                     color: colors.textPrimary, 
                     opacity: 0.6,
                     fontSize: { xs: '0.7rem', md: '0.75rem' }
                   }}>
-                    Ver estadísticas en tiempo real
+                    Visitantes únicos
+                  </Typography>
+                </Box>
+
+                <Box sx={{
+                  backgroundColor: colors.ratingCardBackground,
+                  borderRadius: 3,
+                  p: { xs: 2, md: 3 },
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  textAlign: "center",
+                  flex: 1,
+                  display: "flex", 
+                  flexDirection: "column",
+                  justifyContent: "center", 
+                  alignItems: "center",
+                  position: "relative",
+                  overflow: "hidden"
+                }}>
+                  <Typography variant="h6" sx={{ 
+                    color: colors.textPrimary, 
+                    fontWeight: 600, 
+                    mb: 2,
+                    fontSize: { xs: '1rem', md: '1.25rem' }
+                  }}>
+                    Esta Semana
+                  </Typography>
+                  <Box sx={{ 
+                    display: "flex", 
+                    justifyContent: "center", 
+                    alignItems: "center", 
+                    mb: 1,
+                    minHeight: { xs: '3rem', md: '4rem' }
+                  }}>
+                    {loadingStats ? (
+                      <Typography sx={{ color: colors.textPrimary, opacity: 0.6 }}>Cargando...</Typography>
+                    ) : (
+                      <AnimatedNumber value={stats.usuariosSemana} duration={1500} delay={200} />
+                    )}
+                  </Box>
+                  <Typography variant="caption" sx={{ 
+                    color: colors.textPrimary, 
+                    opacity: 0.6,
+                    fontSize: { xs: '0.7rem', md: '0.75rem' }
+                  }}>
+                    Últimos 7 días
+                  </Typography>
+                </Box>
+
+                <Box sx={{
+                  backgroundColor: colors.ratingCardBackground,
+                  borderRadius: 3,
+                  p: { xs: 2, md: 3 },
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  textAlign: "center",
+                  flex: 1,
+                  display: "flex", 
+                  flexDirection: "column",
+                  justifyContent: "center", 
+                  alignItems: "center",
+                  position: "relative",
+                  overflow: "hidden"
+                }}>
+                  <Typography variant="h6" sx={{ 
+                    color: colors.textPrimary, 
+                    fontWeight: 600, 
+                    mb: 2,
+                    fontSize: { xs: '1rem', md: '1.25rem' }
+                  }}>
+                    Este Mes
+                  </Typography>
+                  <Box sx={{ 
+                    display: "flex", 
+                    justifyContent: "center", 
+                    alignItems: "center", 
+                    mb: 1,
+                    minHeight: { xs: '3rem', md: '4rem' }
+                  }}>
+                    {loadingStats ? (
+                      <Typography sx={{ color: colors.textPrimary, opacity: 0.6 }}>Cargando...</Typography>
+                    ) : (
+                      <AnimatedNumber value={stats.usuariosMes} duration={1500} delay={400} />
+                    )}
+                  </Box>
+                  <Typography variant="caption" sx={{ 
+                    color: colors.textPrimary, 
+                    opacity: 0.6,
+                    fontSize: { xs: '0.7rem', md: '0.75rem' }
+                  }}>
+                    Últimos 30 días
                   </Typography>
                 </Box>
               </Box>

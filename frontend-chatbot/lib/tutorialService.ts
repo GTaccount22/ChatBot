@@ -11,6 +11,10 @@ export interface TutorialStatus {
 export class TutorialService {
   /**
    * Verifica si el usuario ya vio el tutorial
+   * Consulta: SELECT * FROM tutorial_status WHERE rut = ?
+   * Si no hay registro → usuario nunca vio el tutorial → retorna false
+   * Si existe registro con seen = true → retorna true
+   * Si existe registro con seen = false → retorna false
    */
   static async hasSeenTutorial(): Promise<boolean> {
     try {
@@ -24,11 +28,11 @@ export class TutorialService {
       const userRut = sessionData.user.user_metadata?.rut || sessionData.user.id;
       console.log('🔍 Verificando tutorial para usuario:', userRut);
 
+      // SELECT * FROM tutorial_status WHERE rut = ?
       const { data, error } = await supabase
         .from('Tutorial_status')
-        .select('seen')
+        .select('*')
         .eq('rut', userRut)
-        .eq('seen', true)
         .limit(1);
 
       if (error) {
@@ -37,8 +41,15 @@ export class TutorialService {
       }
 
       console.log('📊 Datos de tutorial:', data);
-      // Si hay al menos un registro con seen=true, el tutorial ya fue visto
-      const hasSeen = data && data.length > 0;
+      
+      // Si no hay registro → el usuario nunca vio el tutorial
+      if (!data || data.length === 0) {
+        console.log('📝 No existe registro - usuario nunca vio el tutorial');
+        return false;
+      }
+
+      // Si existe registro, verificar si seen = true
+      const hasSeen = data[0].seen === true;
       console.log('✅ Tutorial visto:', hasSeen);
       return hasSeen;
     } catch (error) {

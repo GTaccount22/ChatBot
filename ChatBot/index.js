@@ -611,6 +611,58 @@ app.delete("/api/tutorial-status/:id", async (req, res) => {
   }
 });
 
+// POST /api/tutorial-completado -> Marcar tutorial como completado y contar como nuevo usuario
+app.post("/api/tutorial-completado", async (req, res) => {
+  const { rut } = req.body;
+
+  // Validación básica
+  if (!rut) {
+    return res.status(400).json({ error: "El campo rut es requerido" });
+  }
+
+  try {
+    // Verificar si ya existe un registro para este rut
+    const { data: existingTutorial, error: fetchError } = await supabase
+      .from("Tutorial_status")
+      .select("*")
+      .eq("rut", rut)
+      .single();
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      // PGRST116 es el error cuando no se encuentra ningún registro
+      console.error("Error verificando tutorial:", fetchError);
+      throw fetchError;
+    }
+
+    if (!existingTutorial) {
+      // No existe, crear nuevo registro
+      console.log(`📝 Creando nuevo registro de tutorial para rut: ${rut}`);
+      const { data: newTutorial, error: insertError } = await supabase
+        .from("Tutorial_status")
+        .insert([{ rut, seen: true, date: new Date().toISOString() }])
+        .select();
+
+      if (insertError) {
+        console.error("Error insertando tutorial:", insertError);
+        throw insertError;
+      }
+
+      // Emitir evento a frontend para actualizar contador
+      io.emit("nuevo-usuario", { rut });
+      console.log(`✅ Usuario ${rut} contado como nuevo - evento emitido`);
+
+      res.json({ mensaje: "Usuario contado como nuevo", data: newTutorial[0] });
+    } else {
+      // Ya existe el registro
+      console.log(`ℹ️ Usuario ${rut} ya vio el tutorial anteriormente`);
+      res.json({ mensaje: "Usuario ya vio el tutorial", data: existingTutorial });
+    }
+  } catch (err) {
+    console.error("❌ Error al actualizar tutorial_status:", err);
+    res.status(500).json({ error: "Error al actualizar tutorial_status", details: err.message });
+  }
+});
+
 // ------------------- ENDPOINTS CRUD PARA RATINGS -------------------
 
 // GET /api/ratings -> Listar todas las calificaciones

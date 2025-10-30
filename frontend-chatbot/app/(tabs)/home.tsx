@@ -53,6 +53,7 @@ function HomeScreen() {
   ];
 
   // Función protegida para enviar tutorial completado solo una vez
+  // También envía nuevo_usuario para sumar al contador de usuarios nuevos
   const enviarTutorialCompletado = async () => {
     if (tutorialEnviadoRef.current) {
       console.log('⚠️ Tutorial ya fue enviado, evitando duplicado');
@@ -64,10 +65,19 @@ function HomeScreen() {
     
     const sessionData = await AuthService.loadSession();
     if (sessionData?.user) {
+      const userRut = sessionData.user.user_metadata?.rut || sessionData.user.id;
+      
+      // Enviar evento de tutorial completado
       socketService.enviarTutorialCompletado({
         user_id: sessionData.user.id,
         date: new Date().toISOString(),
         is_first_tutorial: true
+      });
+      
+      // Enviar nuevo_usuario para sumar al contador de usuarios nuevos
+      console.log('👤 Enviando nuevo usuario para contador...');
+      socketService.enviarNuevoUsuario({
+        rut: userRut
       });
     }
   };

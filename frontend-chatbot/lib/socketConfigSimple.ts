@@ -2,8 +2,8 @@
 export const SOCKET_ENABLED = true;
 
 // URLs del servidor - Configuración con fallback
-const PRODUCTION_URL = "https://chatbot-4gaq.onrender.com";
-const LOCAL_URL = "https://exilic-unconditionally-channing.ngrok-free.dev";
+const PRODUCTION_URL = "https://chatbot-f08a.onrender.com";
+const LOCAL_URL = "https://chatbot-f08a.onrender.com"; // Fallback a Render también
 
 // Función para detectar qué URL usar
 const detectarURLActiva = async (): Promise<string> => {

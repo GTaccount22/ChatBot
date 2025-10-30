@@ -250,7 +250,7 @@ class MockDataService {
    */
   private async enviarAlServidor(tipo: string, datos: any) {
     try {
-      const response = await fetch('http://192.168.1.20:3001/api/estadisticas', {
+      const response = await fetch('https://chatbot-f08a.onrender.com/api/estadisticas', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
