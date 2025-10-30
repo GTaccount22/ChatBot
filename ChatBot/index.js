@@ -1025,13 +1025,38 @@ async function getQuestionsByCategory(categoryId) {
 
 // ------------------- MENÚ DINÁMICO -------------------
 async function buildMenu() {
-  const { data, error } = await supabase
+  // 1) Obtener IDs de categorías que tengan al menos una pregunta activa
+  const { data: activeQuestions, error: qError } = await supabase
+    .from("Questions")
+    .select("category_id")
+    .eq("is_active", true);
+
+  if (qError) {
+    console.error("❌ Error al obtener preguntas activas:", qError);
+    return { menuText: "⚠️ Error al cargar el menú.", categories: [] };
+  }
+
+  const activeCategoryIds = Array.from(
+    new Set((activeQuestions || []).map((q) => q.category_id).filter((id) => id != null))
+  );
+
+  if (activeCategoryIds.length === 0) {
+    return {
+      menuText:
+        "¡Hola! 👋 Bienvenido a DucoChat.\n\nPor ahora no hay categorías disponibles. Intenta más tarde.",
+      categories: []
+    };
+  }
+
+  // 2) Traer solo esas categorías
+  const { data: categories, error: cError } = await supabase
     .from("Category")
     .select("id, name_category")
+    .in("id", activeCategoryIds)
     .order("id", { ascending: true });
 
-  if (error) {
-    console.error("❌ Error al obtener categorías:", error);
+  if (cError) {
+    console.error("❌ Error al obtener categorías:", cError);
     return { menuText: "⚠️ Error al cargar el menú.", categories: [] };
   }
 
@@ -1039,14 +1064,14 @@ async function buildMenu() {
     "¡Hola! 👋 Bienvenido a DucoChat.\nEstamos aquí para ayudarte 24/7.\n\n📋 *Opciones disponibles:*\n\n";
 
   const circleNumbers = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'];
-  data.forEach((cat, index) => {
+  categories.forEach((cat, index) => {
     const numberSymbol = circleNumbers[index] || `${index + 1}.`;
     menuText += `${numberSymbol} ${cat.name_category}\n`;
   });
 
   menuText += "\n💡 *Escribe el número de la opción que te interesa*";
 
-  return { menuText, categories: data };
+  return { menuText, categories };
 }
 
 async function sendMainMenu(to) {
