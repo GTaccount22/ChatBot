@@ -611,6 +611,73 @@ app.delete("/api/tutorial-status/:id", async (req, res) => {
   }
 });
 
+// GET /api/usuarios-por-dia -> Conteo de usuarios (tutorial completado) por día
+app.get("/api/usuarios-por-dia", async (req, res) => {
+  try {
+    // Parámetros: days (default 30) o rango from/to (YYYY-MM-DD)
+    const { days, from, to } = req.query;
+
+    let startDate;
+    let endDate;
+
+    if (from || to) {
+      startDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      endDate = to ? new Date(to) : new Date();
+    } else {
+      const lookbackDays = Number(days) > 0 ? Number(days) : 30;
+      startDate = new Date();
+      startDate.setHours(0, 0, 0, 0);
+      startDate = new Date(startDate.getTime() - (lookbackDays - 1) * 24 * 60 * 60 * 1000);
+      endDate = new Date();
+    }
+
+    const startISO = new Date(startDate).toISOString();
+    const endISO = new Date(endDate).toISOString();
+
+    // Traer todos los registros del rango y agregarlos en memoria
+    const { data, error } = await supabase
+      .from("Tutorial_status")
+      .select("id, date")
+      .gte("date", startISO)
+      .lte("date", endISO)
+      .order("date", { ascending: true });
+
+    if (error) throw error;
+
+    // Construir mapa de fechas YYYY-MM-DD -> count
+    const toYMD = (d) => {
+      const dt = new Date(d);
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, "0");
+      const da = String(dt.getDate()).padStart(2, "0");
+      return `${y}-${m}-${da}`;
+    };
+
+    const countsByDay = new Map();
+    (Array.isArray(data) ? data : []).forEach((row) => {
+      const key = toYMD(row.date);
+      countsByDay.set(key, (countsByDay.get(key) || 0) + 1);
+    });
+
+    // Generar salida ordenada y completa (rellenar días sin datos con 0)
+    const result = [];
+    const cursor = new Date(startDate);
+    cursor.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(0, 0, 0, 0);
+    while (cursor <= end) {
+      const key = toYMD(cursor);
+      result.push({ date: key, count: countsByDay.get(key) || 0 });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json([]);
+  }
+});
+
 // POST /api/tutorial-completado -> Marcar tutorial como completado y contar como nuevo usuario
 app.post("/api/tutorial-completado", async (req, res) => {
   const { rut } = req.body;
